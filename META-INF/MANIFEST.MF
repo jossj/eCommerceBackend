@@ -1,0 +1,21 @@
+Manifest-Version: 1.0
+Bnd-LastModified: 1754168724594
+Build-Jdk-Spec: 17
+Bundle-Description: Java reflect give poor performance on getter sette
+ r an constructor calls, accessors-smart use ASM to speed up those cal
+ ls.
+Bundle-DocURL: https://urielch.github.io/
+Bundle-License: http://www.apache.org/licenses/LICENSE-2.0.txt
+Bundle-ManifestVersion: 2
+Bundle-Name: accessors-smart
+Bundle-SymbolicName: net.minidev.accessors-smart
+Bundle-Vendor: Chemouni Uriel
+Bundle-Version: 2.6.0
+Created-By: Apache Maven Bundle Plugin 5.1.9
+Export-Package: net.minidev.asm;uses:="org.objectweb.asm";version="2.6
+ .0",net.minidev.asm.ex;version="2.6.0"
+Import-Package: org.objectweb.asm;version="[8.0,10)",net.minidev.asm.e
+ x
+Require-Capability: osgi.ee;filter:="(&(osgi.ee=JavaSE)(version=1.8))"
+Tool: Bnd-6.3.1.202206071316
+
