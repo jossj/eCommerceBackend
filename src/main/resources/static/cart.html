@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your Cart</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f4f5f7;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+    header h1 { font-size: 1.4rem; font-weight: 700; }
+    header a {
+      color: #a5b4fc;
+      text-decoration: none;
+      font-size: 0.875rem;
+    }
+    header a:hover { text-decoration: underline; }
+
+    main {
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 0 1.5rem 3rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    /* ── Cart table ── */
+    #cart-empty {
+      text-align: center;
+      padding: 3rem;
+      color: #888;
+      background: #fff;
+      border-radius: 10px;
+      border: 1px solid #e4e4e4;
+    }
+    #cart-empty a {
+      display: inline-block;
+      margin-top: 1rem;
+      padding: 0.55rem 1.2rem;
+      background: #4c51bf;
+      color: #fff;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+
+    #cart-section {
+      background: #fff;
+      border: 1px solid #e4e4e4;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    thead { background: #f8f8f8; }
+    th {
+      text-align: left;
+      padding: 0.75rem 1rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #666;
+      border-bottom: 1px solid #e4e4e4;
+    }
+    td {
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid #f0f0f0;
+      vertical-align: middle;
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: #fafafa; }
+
+    td.name { font-weight: 600; }
+    td.amount { font-weight: 700; }
+    td.remove { text-align: center; }
+
+    .remove-btn {
+      background: none;
+      border: 1px solid #fcc;
+      color: #e53e3e;
+      border-radius: 4px;
+      padding: 3px 8px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: background 0.12s;
+    }
+    .remove-btn:hover { background: #fff5f5; }
+
+    /* ── Summary ── */
+    #summary {
+      background: #fff;
+      border: 1px solid #e4e4e4;
+      border-radius: 10px;
+      padding: 1.2rem 1.4rem;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 1rem;
+    }
+    #summary span { font-size: 0.9rem; color: #555; }
+    #cart-total { font-size: 1.3rem; font-weight: 800; color: #1a1a2e; }
+
+    /* ── Checkout form ── */
+    #checkout-form {
+      background: #fff;
+      border: 1px solid #e4e4e4;
+      border-radius: 10px;
+      padding: 1.4rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    #checkout-form h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 0.2rem;
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #444;
+    }
+    label input, label select {
+      padding: 0.6rem 0.8rem;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      color: #1a1a2e;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    label input:focus, label select:focus { border-color: #4c51bf; }
+
+    #pay-btn {
+      padding: 0.75rem;
+      background: #16a34a;
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    #pay-btn:hover:not(:disabled) { background: #15803d; }
+    #pay-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Status message ── */
+    #status-msg {
+      padding: 1rem 1.2rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      display: none;
+    }
+    #status-msg.success {
+      display: block;
+      background: #f0fdf4;
+      color: #166534;
+      border: 1px solid #bbf7d0;
+    }
+    #status-msg.error {
+      display: block;
+      background: #fef2f2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Your Cart</h1>
+  <a href="/products.html">← Continue Shopping</a>
+</header>
+
+<main>
+  <!-- Empty state -->
+  <div id="cart-empty" style="display:none">
+    <p>Your cart is empty.</p>
+    <a href="/products.html">Browse Products</a>
+  </div>
+
+  <!-- Cart table -->
+  <div id="cart-section" style="display:none">
+    <table>
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Unit Price</th>
+          <th>Qty</th>
+          <th>Subtotal</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="cart-rows"></tbody>
+    </table>
+  </div>
+
+  <!-- Order total -->
+  <div id="summary" style="display:none">
+    <span>Order Total</span>
+    <div id="cart-total">$0.00</div>
+  </div>
+
+  <!-- Checkout -->
+  <div id="checkout-form" style="display:none">
+    <h2>Checkout</h2>
+    <label>
+      Shipping Address
+      <input type="text" id="shipping-address" placeholder="123 Main St, City, State ZIP" />
+    </label>
+    <label>
+      Payment Method
+      <select id="payment-method">
+        <option value="CREDIT_CARD">Credit Card</option>
+        <option value="DEBIT_CARD">Debit Card</option>
+        <option value="PAYPAL">PayPal</option>
+        <option value="BANK_TRANSFER">Bank Transfer</option>
+        <option value="CASH_ON_DELIVERY">Cash on Delivery</option>
+      </select>
+    </label>
+    <button id="pay-btn">Pay Now</button>
+  </div>
+
+  <!-- Status feedback -->
+  <div id="status-msg"></div>
+</main>
+
+<script>
+  const USER_ID = 1;
+
+  // ── Boot ──────────────────────────────────────────────────────────────────
+  fetchCart();
+
+  document.getElementById('pay-btn').addEventListener('click', handlePay);
+
+  // ── Cart fetch & render ───────────────────────────────────────────────────
+  async function fetchCart() {
+    try {
+      const res = await fetch(`/api/cart/user/${USER_ID}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const cart = await res.json();
+      renderCart(cart);
+    } catch (err) {
+      showStatus(`Failed to load cart: ${err.message}`, 'error');
+    }
+  }
+
+  function renderCart(cart) {
+    const items = cart.cartItems || [];
+    const emptyEl = document.getElementById('cart-empty');
+    const sectionEl = document.getElementById('cart-section');
+    const summaryEl = document.getElementById('summary');
+    const formEl = document.getElementById('checkout-form');
+    const rowsEl = document.getElementById('cart-rows');
+    const totalEl = document.getElementById('cart-total');
+
+    if (!items.length) {
+      emptyEl.style.display = '';
+      sectionEl.style.display = 'none';
+      summaryEl.style.display = 'none';
+      formEl.style.display = 'none';
+      return;
+    }
+
+    emptyEl.style.display = 'none';
+    sectionEl.style.display = '';
+    summaryEl.style.display = '';
+    formEl.style.display = '';
+
+    rowsEl.innerHTML = '';
+    items.forEach(item => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="name">${esc(item.productName)}</td>
+        <td>$${Number(item.unitPrice).toFixed(2)}</td>
+        <td>${item.quantity}</td>
+        <td class="amount">$${Number(item.subtotal).toFixed(2)}</td>
+        <td class="remove">
+          <button class="remove-btn" data-item-id="${item.id}">Remove</button>
+        </td>
+      `;
+      tr.querySelector('.remove-btn').addEventListener('click', () => removeItem(item.id));
+      rowsEl.appendChild(tr);
+    });
+
+    totalEl.textContent = `$${Number(cart.totalAmount).toFixed(2)}`;
+  }
+
+  // ── Remove item ───────────────────────────────────────────────────────────
+  async function removeItem(itemId) {
+    try {
+      const res = await fetch(`/api/cart/user/${USER_ID}/items/${itemId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const cart = await res.json();
+      renderCart(cart);
+    } catch (err) {
+      showStatus(`Could not remove item: ${err.message}`, 'error');
+    }
+  }
+
+  // ── Pay flow ──────────────────────────────────────────────────────────────
+  async function handlePay() {
+    const shippingAddress = document.getElementById('shipping-address').value.trim();
+    if (!shippingAddress) {
+      showStatus('Please enter a shipping address.', 'error');
+      return;
+    }
+
+    const payBtn = document.getElementById('pay-btn');
+    payBtn.disabled = true;
+    payBtn.textContent = 'Processing…';
+    clearStatus();
+
+    // Step 1: Create order from cart
+    let order;
+    try {
+      const orderRes = await fetch(
+        `/api/orders/from-cart/${USER_ID}?shippingAddress=${encodeURIComponent(shippingAddress)}`,
+        { method: 'POST' }
+      );
+      if (!orderRes.ok) {
+        const err = await orderRes.json().catch(() => ({}));
+        showStatus(`Order failed: ${err.message || orderRes.statusText}`, 'error');
+        payBtn.disabled = false;
+        payBtn.textContent = 'Pay Now';
+        return;
+      }
+      order = await orderRes.json();
+    } catch (err) {
+      showStatus(`Network error creating order: ${err.message}`, 'error');
+      payBtn.disabled = false;
+      payBtn.textContent = 'Pay Now';
+      return;
+    }
+
+    // Step 2: Process payment
+    const paymentMethod = document.getElementById('payment-method').value;
+    try {
+      const payRes = await fetch('/api/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: order.id,
+          paymentMethod: paymentMethod,
+          amount: order.totalAmount
+        })
+      });
+
+      if (!payRes.ok) {
+        const err = await payRes.json().catch(() => ({}));
+        // Order already exists — do NOT re-enable the button or retry
+        showStatus(
+          `Order #${order.id} was placed but payment failed: ${err.message || payRes.statusText}. Please contact support with your order number.`,
+          'error'
+        );
+        payBtn.textContent = 'Payment Failed';
+        return;
+      }
+
+      const payment = await payRes.json();
+
+      // Success
+      showStatus(
+        `Payment successful! Order #${order.id} confirmed.${payment.transactionId ? ` Transaction ID: ${payment.transactionId}` : ''}`,
+        'success'
+      );
+      renderCart({ cartItems: [] });
+      payBtn.textContent = 'Paid ✓';
+
+    } catch (err) {
+      showStatus(
+        `Order #${order.id} was placed but a network error occurred during payment. Please contact support.`,
+        'error'
+      );
+      payBtn.textContent = 'Payment Failed';
+    }
+  }
+
+  // ── Utility ───────────────────────────────────────────────────────────────
+  function showStatus(msg, type) {
+    const el = document.getElementById('status-msg');
+    el.textContent = msg;
+    el.className = type;
+    el.style.display = '';
+  }
+  function clearStatus() {
+    const el = document.getElementById('status-msg');
+    el.textContent = '';
+    el.className = '';
+    el.style.display = 'none';
+  }
+  function esc(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+</script>
+
+</body>
+</html>
