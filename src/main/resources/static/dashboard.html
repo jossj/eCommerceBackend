@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Orders Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    header h1 { font-size: 1.3rem; font-weight: 600; letter-spacing: 0.5px; }
+
+    #refresh-btn {
+      background: #4f46e5;
+      color: #fff;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: background 0.2s;
+    }
+    #refresh-btn:hover { background: #4338ca; }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 16px;
+      padding: 24px 32px 8px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+
+    .card .label { font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
+    .card .value { font-size: 1.8rem; font-weight: 700; margin-top: 6px; }
+    .card.blue  .value { color: #4f46e5; }
+    .card.green .value { color: #059669; }
+    .card.amber .value { color: #d97706; }
+    .card.red   .value { color: #dc2626; }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      padding: 16px 32px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .controls input, .controls select {
+      padding: 8px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      outline: none;
+      background: #fff;
+    }
+    .controls input:focus, .controls select:focus { border-color: #4f46e5; }
+
+    #orders-container { padding: 0 32px 40px; }
+
+    .order-card {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+
+    .order-header {
+      display: grid;
+      grid-template-columns: auto 1fr auto auto auto;
+      gap: 16px;
+      align-items: center;
+      padding: 16px 20px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s;
+    }
+    .order-header:hover { background: #f9fafb; }
+
+    .order-id { font-weight: 700; font-size: 0.95rem; color: #4f46e5; white-space: nowrap; }
+    .order-meta { display: flex; flex-direction: column; gap: 3px; }
+    .order-meta .user  { font-size: 0.85rem; color: #374151; }
+    .order-meta .date  { font-size: 0.78rem; color: #9ca3af; }
+    .order-address     { font-size: 0.82rem; color: #6b7280; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .order-total       { font-weight: 700; font-size: 1rem; white-space: nowrap; }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      white-space: nowrap;
+    }
+    .badge-PENDING    { background: #fef3c7; color: #92400e; }
+    .badge-CONFIRMED  { background: #dbeafe; color: #1e40af; }
+    .badge-PROCESSING { background: #ede9fe; color: #5b21b6; }
+    .badge-SHIPPED    { background: #e0f2fe; color: #0369a1; }
+    .badge-DELIVERED  { background: #d1fae5; color: #065f46; }
+    .badge-CANCELLED  { background: #fee2e2; color: #991b1b; }
+    .badge-REFUNDED   { background: #f3f4f6; color: #374151; }
+
+    .toggle-icon { color: #9ca3af; font-size: 0.8rem; transition: transform 0.2s; }
+    .order-card.open .toggle-icon { transform: rotate(180deg); }
+
+    .order-items {
+      display: none;
+      border-top: 1px solid #f3f4f6;
+      padding: 0 20px 16px;
+    }
+    .order-card.open .order-items { display: block; }
+
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 0.86rem;
+    }
+    .items-table th {
+      text-align: left;
+      padding: 8px 10px;
+      background: #f9fafb;
+      color: #6b7280;
+      font-weight: 600;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .items-table td {
+      padding: 10px 10px;
+      border-bottom: 1px solid #f3f4f6;
+      color: #374151;
+    }
+    .items-table tr:last-child td { border-bottom: none; }
+    .items-table td.right { text-align: right; }
+
+    .tracking {
+      margin-top: 10px;
+      font-size: 0.82rem;
+      color: #6b7280;
+    }
+    .tracking span { color: #4f46e5; font-weight: 600; }
+
+    #status-msg {
+      text-align: center;
+      padding: 60px 20px;
+      color: #9ca3af;
+      font-size: 0.95rem;
+    }
+
+    #error-msg {
+      background: #fee2e2;
+      color: #991b1b;
+      border-radius: 8px;
+      padding: 14px 20px;
+      margin: 0 32px 16px;
+      font-size: 0.88rem;
+      display: none;
+    }
+
+    @media (max-width: 640px) {
+      .summary, .controls, #orders-container { padding-left: 16px; padding-right: 16px; }
+      .order-header { grid-template-columns: auto 1fr auto; }
+      .order-address { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Orders Dashboard</h1>
+  <button id="refresh-btn" onclick="loadOrders()">Refresh</button>
+</header>
+
+<div class="summary">
+  <div class="card blue">
+    <div class="label">Total Orders</div>
+    <div class="value" id="stat-total">—</div>
+  </div>
+  <div class="card amber">
+    <div class="label">Pending</div>
+    <div class="value" id="stat-pending">—</div>
+  </div>
+  <div class="card blue">
+    <div class="label">Processing</div>
+    <div class="value" id="stat-processing">—</div>
+  </div>
+  <div class="card green">
+    <div class="label">Delivered</div>
+    <div class="value" id="stat-delivered">—</div>
+  </div>
+  <div class="card red">
+    <div class="label">Cancelled</div>
+    <div class="value" id="stat-cancelled">—</div>
+  </div>
+  <div class="card green">
+    <div class="label">Total Revenue</div>
+    <div class="value" id="stat-revenue">—</div>
+  </div>
+</div>
+
+<div class="controls">
+  <input type="text" id="search" placeholder="Search order ID, user ID, address…" oninput="renderOrders()" style="min-width:240px;" />
+  <select id="status-filter" onchange="renderOrders()">
+    <option value="">All statuses</option>
+    <option>PENDING</option>
+    <option>CONFIRMED</option>
+    <option>PROCESSING</option>
+    <option>SHIPPED</option>
+    <option>DELIVERED</option>
+    <option>CANCELLED</option>
+    <option>REFUNDED</option>
+  </select>
+  <select id="sort-by" onchange="renderOrders()">
+    <option value="date-desc">Newest first</option>
+    <option value="date-asc">Oldest first</option>
+    <option value="total-desc">Highest total</option>
+    <option value="total-asc">Lowest total</option>
+  </select>
+</div>
+
+<div id="error-msg"></div>
+<div id="orders-container"><div id="status-msg">Loading orders…</div></div>
+
+<script>
+  let allOrders = [];
+
+  async function loadOrders() {
+    document.getElementById('status-msg').textContent = 'Loading orders…';
+    document.getElementById('status-msg').style.display = 'block';
+    document.getElementById('error-msg').style.display = 'none';
+    document.getElementById('orders-container').innerHTML = '<div id="status-msg">Loading orders…</div>';
+
+    try {
+      const res = await fetch('/api/orders');
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      allOrders = await res.json();
+      updateStats(allOrders);
+      renderOrders();
+    } catch (err) {
+      const el = document.getElementById('error-msg');
+      el.textContent = `Failed to load orders: ${err.message}`;
+      el.style.display = 'block';
+      document.getElementById('orders-container').innerHTML = '<div id="status-msg">No orders to display.</div>';
+    }
+  }
+
+  function updateStats(orders) {
+    const count = s => orders.filter(o => o.status === s).length;
+    document.getElementById('stat-total').textContent     = orders.length;
+    document.getElementById('stat-pending').textContent   = count('PENDING');
+    document.getElementById('stat-processing').textContent = count('PROCESSING') + count('CONFIRMED') + count('SHIPPED');
+    document.getElementById('stat-delivered').textContent = count('DELIVERED');
+    document.getElementById('stat-cancelled').textContent = count('CANCELLED');
+    const revenue = orders
+      .filter(o => o.status !== 'CANCELLED' && o.status !== 'REFUNDED')
+      .reduce((sum, o) => sum + parseFloat(o.totalAmount || 0), 0);
+    document.getElementById('stat-revenue').textContent = '$' + revenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function renderOrders() {
+    const search  = document.getElementById('search').value.toLowerCase();
+    const status  = document.getElementById('status-filter').value;
+    const sortBy  = document.getElementById('sort-by').value;
+
+    let orders = allOrders.filter(o => {
+      const matchStatus = !status || o.status === status;
+      const matchSearch = !search ||
+        String(o.id).includes(search) ||
+        String(o.userId).includes(search) ||
+        (o.shippingAddress || '').toLowerCase().includes(search) ||
+        (o.trackingNumber  || '').toLowerCase().includes(search);
+      return matchStatus && matchSearch;
+    });
+
+    orders = orders.slice().sort((a, b) => {
+      if (sortBy === 'date-desc')  return new Date(b.createdAt) - new Date(a.createdAt);
+      if (sortBy === 'date-asc')   return new Date(a.createdAt) - new Date(b.createdAt);
+      if (sortBy === 'total-desc') return parseFloat(b.totalAmount) - parseFloat(a.totalAmount);
+      if (sortBy === 'total-asc')  return parseFloat(a.totalAmount) - parseFloat(b.totalAmount);
+      return 0;
+    });
+
+    const container = document.getElementById('orders-container');
+
+    if (orders.length === 0) {
+      container.innerHTML = '<div id="status-msg">No orders match your filters.</div>';
+      return;
+    }
+
+    container.innerHTML = orders.map(order => orderCard(order)).join('');
+  }
+
+  function orderCard(order) {
+    const date = order.createdAt
+      ? new Date(order.createdAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+      : '—';
+    const total = order.totalAmount != null
+      ? '$' + parseFloat(order.totalAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : '—';
+    const items = order.orderItems || [];
+
+    const itemRows = items.length === 0
+      ? '<tr><td colspan="5" style="color:#9ca3af;padding:12px 10px;">No items</td></tr>'
+      : items.map(item => {
+          const unit = item.unitPrice != null ? '$' + parseFloat(item.unitPrice).toFixed(2) : '—';
+          const sub  = item.subtotal   != null ? '$' + parseFloat(item.subtotal).toFixed(2)  : '—';
+          return `
+            <tr>
+              <td>${item.id ?? '—'}</td>
+              <td>${escHtml(item.productName ?? `Product #${item.productId}`)}</td>
+              <td class="right">${item.quantity ?? '—'}</td>
+              <td class="right">${unit}</td>
+              <td class="right">${sub}</td>
+            </tr>`;
+        }).join('');
+
+    const tracking = order.trackingNumber
+      ? `<div class="tracking">Tracking: <span>${escHtml(order.trackingNumber)}</span></div>`
+      : '';
+
+    return `
+      <div class="order-card" id="order-${order.id}">
+        <div class="order-header" onclick="toggleOrder(${order.id})">
+          <div class="order-id">#${order.id}</div>
+          <div class="order-meta">
+            <span class="user">User #${order.userId}</span>
+            <span class="date">${date}</span>
+          </div>
+          <div class="order-address">${escHtml(order.shippingAddress ?? '—')}</div>
+          <span class="badge badge-${order.status}">${order.status}</span>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <span class="order-total">${total}</span>
+            <span class="toggle-icon">▼</span>
+          </div>
+        </div>
+        <div class="order-items">
+          <table class="items-table">
+            <thead>
+              <tr>
+                <th>Item ID</th>
+                <th>Product</th>
+                <th class="right">Qty</th>
+                <th class="right">Unit Price</th>
+                <th class="right">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>${itemRows}</tbody>
+          </table>
+          ${tracking}
+        </div>
+      </div>`;
+  }
+
+  function toggleOrder(id) {
+    document.getElementById(`order-${id}`).classList.toggle('open');
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  loadOrders();
+</script>
+</body>
+</html>
