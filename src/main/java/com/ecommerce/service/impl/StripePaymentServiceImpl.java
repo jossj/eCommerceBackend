@@ -3,10 +3,13 @@ package com.ecommerce.service.impl;
 import com.ecommerce.exception.StripePaymentException;
 import com.ecommerce.service.StripePaymentService;
 import com.stripe.exception.StripeException;
+import com.stripe.model.Customer;
 import com.stripe.model.Event;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.Refund;
 import com.stripe.net.Webhook;
+import com.stripe.param.CustomerCreateParams;
+import com.stripe.param.CustomerSearchParams;
 import com.stripe.param.PaymentIntentCancelParams;
 import com.stripe.param.PaymentIntentConfirmParams;
 import com.stripe.param.PaymentIntentCreateParams;
@@ -23,11 +26,16 @@ public class StripePaymentServiceImpl implements StripePaymentService {
     private String webhookSecret;
 
     @Override
-    public PaymentIntent createPaymentIntent(BigDecimal amount, String currency, Long orderId) {
+    public PaymentIntent createPaymentIntent(BigDecimal amount, String currency, Long orderId,
+                                             String email, String name) {
         try {
+            String customerId = getOrCreateCustomer(email, name);
+
             PaymentIntentCreateParams params = PaymentIntentCreateParams.builder()
                     .setAmount(toCents(amount))
                     .setCurrency(currency.toLowerCase())
+                    .setCustomer(customerId)
+                    .setReceiptEmail(email)
                     .putMetadata("orderId", orderId.toString())
                     .build();
             return PaymentIntent.create(params);
@@ -89,6 +97,24 @@ public class StripePaymentServiceImpl implements StripePaymentService {
         } catch (StripeException e) {
             throw new StripePaymentException("Invalid webhook signature: " + e.getMessage(), e);
         }
+    }
+
+    private String getOrCreateCustomer(String email, String name) throws StripeException {
+        var searchResult = Customer.search(
+                CustomerSearchParams.builder()
+                        .setQuery("email:'" + email + "'")
+                        .build());
+
+        if (!searchResult.getData().isEmpty()) {
+            return searchResult.getData().get(0).getId();
+        }
+
+        return Customer.create(
+                CustomerCreateParams.builder()
+                        .setEmail(email)
+                        .setName(name)
+                        .build()
+        ).getId();
     }
 
     private long toCents(BigDecimal amount) {
