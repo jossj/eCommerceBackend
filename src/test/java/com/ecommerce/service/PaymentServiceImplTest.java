@@ -290,7 +290,7 @@ class PaymentServiceImplTest {
 
         when(paymentRepository.existsByOrderId(1L)).thenReturn(false);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
-        when(stripePaymentService.createPaymentIntent(order.getTotalAmount(), "AUD", 1L))
+        when(stripePaymentService.createPaymentIntent(order.getTotalAmount(), "AUD", 1L, "john@example.com", "John Doe"))
                 .thenReturn(mockIntent);
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
             Payment saved = inv.getArgument(0);
@@ -321,7 +321,7 @@ class PaymentServiceImplTest {
         assertThatThrownBy(() -> paymentService.createPaymentIntent(request))
                 .isInstanceOf(ResourceAlreadyExistsException.class);
 
-        verify(stripePaymentService, never()).createPaymentIntent(any(), any(), any());
+        verify(stripePaymentService, never()).createPaymentIntent(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -338,7 +338,7 @@ class PaymentServiceImplTest {
 
         when(paymentRepository.existsByOrderId(1L)).thenReturn(false);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
-        when(stripePaymentService.createPaymentIntent(any(BigDecimal.class), eq("AUD"), eq(Long.valueOf(1L)))).thenReturn(mockIntent);
+        when(stripePaymentService.createPaymentIntent(any(BigDecimal.class), eq("AUD"), eq(Long.valueOf(1L)), any(), any())).thenReturn(mockIntent);
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
             Payment saved = inv.getArgument(0);
             assertThat(saved.getCurrency()).isEqualTo("AUD");
