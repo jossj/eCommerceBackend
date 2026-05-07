@@ -1,10 +1,13 @@
 package com.ecommerce.controller;
 
 import com.ecommerce.dto.PaymentDTO;
+import com.ecommerce.dto.PaymentIntentRequest;
+import com.ecommerce.dto.PaymentIntentResponse;
 import com.ecommerce.entity.Payment.PaymentMethod;
 import com.ecommerce.entity.Payment.PaymentStatus;
 import com.ecommerce.exception.ResourceAlreadyExistsException;
 import com.ecommerce.exception.ResourceNotFoundException;
+import com.ecommerce.exception.StripePaymentException;
 import com.ecommerce.service.PaymentService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,9 +20,11 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 import static org.hamcrest.Matchers.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -193,6 +198,89 @@ class PaymentControllerTest {
                 .thenThrow(new ResourceNotFoundException("Payment not found with id: 99"));
 
         mockMvc.perform(patch("/api/payments/99/refund"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void createPaymentIntent_validInput_returns201() throws Exception {
+        PaymentIntentRequest request = PaymentIntentRequest.builder()
+                .orderId(1L).paymentMethod(PaymentMethod.CREDIT_CARD).currency("USD").build();
+        PaymentIntentResponse response = PaymentIntentResponse.builder()
+                .paymentId(1L).orderId(1L)
+                .paymentIntentId("pi_test_abc")
+                .clientSecret("pi_test_abc_secret_xyz")
+                .status("requires_payment_method")
+                .amountInCents(99999L)
+                .currency("usd")
+                .build();
+        when(paymentService.createPaymentIntent(any(PaymentIntentRequest.class))).thenReturn(response);
+
+        mockMvc.perform(post("/api/payments/intents")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.paymentIntentId").value("pi_test_abc"))
+                .andExpect(jsonPath("$.clientSecret").value("pi_test_abc_secret_xyz"))
+                .andExpect(jsonPath("$.status").value("requires_payment_method"))
+                .andExpect(jsonPath("$.orderId").value(1));
+    }
+
+    @Test
+    void createPaymentIntent_missingOrderId_returns400() throws Exception {
+        PaymentIntentRequest invalid = PaymentIntentRequest.builder()
+                .paymentMethod(PaymentMethod.CREDIT_CARD).build();
+
+        mockMvc.perform(post("/api/payments/intents")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(invalid)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createPaymentIntent_stripeError_returns402() throws Exception {
+        PaymentIntentRequest request = PaymentIntentRequest.builder()
+                .orderId(1L).paymentMethod(PaymentMethod.CREDIT_CARD).build();
+        when(paymentService.createPaymentIntent(any(PaymentIntentRequest.class)))
+                .thenThrow(new StripePaymentException("Stripe API error"));
+
+        mockMvc.perform(post("/api/payments/intents")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isPaymentRequired());
+    }
+
+    @Test
+    void confirmPaymentIntent_success_returns200() throws Exception {
+        PaymentDTO confirmed = PaymentDTO.builder()
+                .id(1L).orderId(1L).paymentMethod(PaymentMethod.CREDIT_CARD)
+                .status(PaymentStatus.COMPLETED).currency("USD").build();
+        when(paymentService.confirmStripePayment(anyString(), anyString())).thenReturn(confirmed);
+
+        mockMvc.perform(post("/api/payments/intents/pi_test_abc/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("paymentMethodId", "pm_card_visa"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+    }
+
+    @Test
+    void cancelPaymentIntent_success_returns200() throws Exception {
+        PaymentDTO cancelled = PaymentDTO.builder()
+                .id(1L).orderId(1L).paymentMethod(PaymentMethod.CREDIT_CARD)
+                .status(PaymentStatus.CANCELLED).currency("USD").build();
+        when(paymentService.cancelStripePayment("pi_test_abc")).thenReturn(cancelled);
+
+        mockMvc.perform(post("/api/payments/intents/pi_test_abc/cancel"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+    }
+
+    @Test
+    void cancelPaymentIntent_notFound_returns404() throws Exception {
+        when(paymentService.cancelStripePayment("pi_missing"))
+                .thenThrow(new ResourceNotFoundException("Payment not found for payment intent: pi_missing"));
+
+        mockMvc.perform(post("/api/payments/intents/pi_missing/cancel"))
                 .andExpect(status().isNotFound());
     }
 }

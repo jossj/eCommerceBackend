@@ -1,6 +1,8 @@
 package com.ecommerce.service.impl;
 
 import com.ecommerce.dto.PaymentDTO;
+import com.ecommerce.dto.PaymentIntentRequest;
+import com.ecommerce.dto.PaymentIntentResponse;
 import com.ecommerce.entity.Order;
 import com.ecommerce.entity.Payment;
 import com.ecommerce.entity.Payment.PaymentStatus;
@@ -9,6 +11,11 @@ import com.ecommerce.exception.ResourceNotFoundException;
 import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.PaymentRepository;
 import com.ecommerce.service.PaymentService;
+import com.ecommerce.service.StripePaymentService;
+import com.stripe.model.Event;
+import com.stripe.model.EventDataObjectDeserializer;
+import com.stripe.model.PaymentIntent;
+import com.stripe.model.StripeObject;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +31,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     private final PaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
+    private final StripePaymentService stripePaymentService;
 
     @Override
     public PaymentDTO processPayment(PaymentDTO dto) {
@@ -47,6 +55,111 @@ public class PaymentServiceImpl implements PaymentService {
         orderRepository.save(order);
 
         return toDTO(paymentRepository.save(payment));
+    }
+
+    @Override
+    public PaymentIntentResponse createPaymentIntent(PaymentIntentRequest request) {
+        if (paymentRepository.existsByOrderId(request.getOrderId())) {
+            throw new ResourceAlreadyExistsException("Payment already exists for order id: " + request.getOrderId());
+        }
+
+        Order order = orderRepository.findById(request.getOrderId())
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + request.getOrderId()));
+
+        String currency = request.getCurrency() != null ? request.getCurrency() : "USD";
+
+        PaymentIntent stripeIntent = stripePaymentService.createPaymentIntent(
+                order.getTotalAmount(), currency, order.getId());
+
+        Payment payment = Payment.builder()
+                .order(order)
+                .paymentMethod(request.getPaymentMethod())
+                .amount(order.getTotalAmount())
+                .currency(currency)
+                .stripePaymentIntentId(stripeIntent.getId())
+                .status(PaymentStatus.PENDING)
+                .build();
+
+        payment = paymentRepository.save(payment);
+
+        return PaymentIntentResponse.builder()
+                .paymentId(payment.getId())
+                .orderId(order.getId())
+                .paymentIntentId(stripeIntent.getId())
+                .clientSecret(stripeIntent.getClientSecret())
+                .status(stripeIntent.getStatus())
+                .amountInCents(stripeIntent.getAmount())
+                .currency(stripeIntent.getCurrency())
+                .build();
+    }
+
+    @Override
+    public PaymentDTO confirmStripePayment(String paymentIntentId, String paymentMethodId) {
+        Payment payment = findByIntentOrThrow(paymentIntentId);
+
+        PaymentIntent confirmedIntent = stripePaymentService.confirmPaymentIntent(paymentIntentId, paymentMethodId);
+
+        if ("succeeded".equals(confirmedIntent.getStatus())) {
+            payment.setStatus(PaymentStatus.COMPLETED);
+            payment.setTransactionId(confirmedIntent.getLatestCharge());
+            Order order = payment.getOrder();
+            order.setStatus(Order.OrderStatus.CONFIRMED);
+            orderRepository.save(order);
+        } else {
+            payment.setStatus(PaymentStatus.FAILED);
+        }
+
+        return toDTO(paymentRepository.save(payment));
+    }
+
+    @Override
+    public PaymentDTO cancelStripePayment(String paymentIntentId) {
+        Payment payment = findByIntentOrThrow(paymentIntentId);
+
+        stripePaymentService.cancelPaymentIntent(paymentIntentId);
+
+        payment.setStatus(PaymentStatus.CANCELLED);
+        return toDTO(paymentRepository.save(payment));
+    }
+
+    @Override
+    public void handleWebhookEvent(String payload, String sigHeader) {
+        Event event = stripePaymentService.constructWebhookEvent(payload, sigHeader);
+
+        EventDataObjectDeserializer deserializer = event.getDataObjectDeserializer();
+        if (!deserializer.getObject().isPresent()) {
+            return;
+        }
+
+        StripeObject stripeObject = deserializer.getObject().get();
+
+        switch (event.getType()) {
+            case "payment_intent.succeeded" -> {
+                PaymentIntent intent = (PaymentIntent) stripeObject;
+                paymentRepository.findByStripePaymentIntentId(intent.getId()).ifPresent(payment -> {
+                    payment.setStatus(PaymentStatus.COMPLETED);
+                    payment.setTransactionId(intent.getLatestCharge());
+                    paymentRepository.save(payment);
+                    Order order = payment.getOrder();
+                    order.setStatus(Order.OrderStatus.CONFIRMED);
+                    orderRepository.save(order);
+                });
+            }
+            case "payment_intent.payment_failed" -> {
+                PaymentIntent intent = (PaymentIntent) stripeObject;
+                paymentRepository.findByStripePaymentIntentId(intent.getId()).ifPresent(payment -> {
+                    payment.setStatus(PaymentStatus.FAILED);
+                    paymentRepository.save(payment);
+                });
+            }
+            case "payment_intent.canceled" -> {
+                PaymentIntent intent = (PaymentIntent) stripeObject;
+                paymentRepository.findByStripePaymentIntentId(intent.getId()).ifPresent(payment -> {
+                    payment.setStatus(PaymentStatus.CANCELLED);
+                    paymentRepository.save(payment);
+                });
+            }
+        }
     }
 
     @Override
@@ -85,6 +198,11 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     public PaymentDTO refundPayment(Long id) {
         Payment payment = findOrThrow(id);
+
+        if (payment.getStripePaymentIntentId() != null) {
+            stripePaymentService.refundPaymentIntent(payment.getStripePaymentIntentId(), null);
+        }
+
         payment.setStatus(PaymentStatus.REFUNDED);
 
         Order order = payment.getOrder();
@@ -99,6 +217,12 @@ public class PaymentServiceImpl implements PaymentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Payment not found with id: " + id));
     }
 
+    private Payment findByIntentOrThrow(String paymentIntentId) {
+        return paymentRepository.findByStripePaymentIntentId(paymentIntentId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Payment not found for payment intent: " + paymentIntentId));
+    }
+
     private PaymentDTO toDTO(Payment payment) {
         return PaymentDTO.builder()
                 .id(payment.getId())
@@ -107,6 +231,7 @@ public class PaymentServiceImpl implements PaymentService {
                 .paymentMethod(payment.getPaymentMethod())
                 .amount(payment.getAmount())
                 .transactionId(payment.getTransactionId())
+                .stripePaymentIntentId(payment.getStripePaymentIntentId())
                 .currency(payment.getCurrency())
                 .createdAt(payment.getCreatedAt())
                 .updatedAt(payment.getUpdatedAt())

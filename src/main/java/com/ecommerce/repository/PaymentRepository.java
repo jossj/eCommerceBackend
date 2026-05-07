@@ -16,4 +16,6 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     List<Payment> findByStatus(PaymentStatus status);
 
     boolean existsByOrderId(Long orderId);
+
+    Optional<Payment> findByStripePaymentIntentId(String stripePaymentIntentId);
 }

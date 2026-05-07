@@ -1,6 +1,8 @@
 package com.ecommerce.service;
 
 import com.ecommerce.dto.PaymentDTO;
+import com.ecommerce.dto.PaymentIntentRequest;
+import com.ecommerce.dto.PaymentIntentResponse;
 import com.ecommerce.entity.Order;
 import com.ecommerce.entity.Payment;
 import com.ecommerce.entity.Payment.PaymentMethod;
@@ -10,7 +12,11 @@ import com.ecommerce.exception.ResourceAlreadyExistsException;
 import com.ecommerce.exception.ResourceNotFoundException;
 import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.PaymentRepository;
+import com.ecommerce.service.StripePaymentService;
 import com.ecommerce.service.impl.PaymentServiceImpl;
+import com.stripe.model.Event;
+import com.stripe.model.EventDataObjectDeserializer;
+import com.stripe.model.PaymentIntent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,6 +31,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -32,6 +39,7 @@ class PaymentServiceImplTest {
 
     @Mock private PaymentRepository paymentRepository;
     @Mock private OrderRepository orderRepository;
+    @Mock private StripePaymentService stripePaymentService;
 
     @InjectMocks
     private PaymentServiceImpl paymentService;
@@ -253,5 +261,185 @@ class PaymentServiceImplTest {
 
         assertThatThrownBy(() -> paymentService.refundPayment(99L))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void refundPayment_withStripeIntentId_callsStripeRefund() {
+        payment.setStripePaymentIntentId("pi_test_123");
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+        when(orderRepository.save(any(Order.class))).thenReturn(order);
+        when(paymentRepository.save(any(Payment.class))).thenReturn(payment);
+        when(stripePaymentService.refundPaymentIntent("pi_test_123", null)).thenReturn(null);
+
+        paymentService.refundPayment(1L);
+
+        verify(stripePaymentService).refundPaymentIntent("pi_test_123", null);
+    }
+
+    @Test
+    void createPaymentIntent_success() {
+        PaymentIntentRequest request = PaymentIntentRequest.builder()
+                .orderId(1L).paymentMethod(PaymentMethod.CREDIT_CARD).currency("USD").build();
+
+        PaymentIntent mockIntent = mock(PaymentIntent.class);
+        when(mockIntent.getId()).thenReturn("pi_test_abc");
+        when(mockIntent.getClientSecret()).thenReturn("pi_test_abc_secret_xyz");
+        when(mockIntent.getStatus()).thenReturn("requires_payment_method");
+        when(mockIntent.getAmount()).thenReturn(99999L);
+        when(mockIntent.getCurrency()).thenReturn("usd");
+
+        when(paymentRepository.existsByOrderId(1L)).thenReturn(false);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+        when(stripePaymentService.createPaymentIntent(order.getTotalAmount(), "USD", 1L))
+                .thenReturn(mockIntent);
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
+            Payment saved = inv.getArgument(0);
+            saved = Payment.builder()
+                    .id(1L).order(order)
+                    .paymentMethod(PaymentMethod.CREDIT_CARD)
+                    .amount(order.getTotalAmount())
+                    .currency("USD")
+                    .stripePaymentIntentId("pi_test_abc")
+                    .status(PaymentStatus.PENDING)
+                    .build();
+            return saved;
+        });
+
+        PaymentIntentResponse response = paymentService.createPaymentIntent(request);
+
+        assertThat(response.getPaymentIntentId()).isEqualTo("pi_test_abc");
+        assertThat(response.getClientSecret()).isEqualTo("pi_test_abc_secret_xyz");
+        assertThat(response.getOrderId()).isEqualTo(1L);
+    }
+
+    @Test
+    void createPaymentIntent_duplicatePayment_throwsException() {
+        PaymentIntentRequest request = PaymentIntentRequest.builder()
+                .orderId(1L).paymentMethod(PaymentMethod.CREDIT_CARD).build();
+        when(paymentRepository.existsByOrderId(1L)).thenReturn(true);
+
+        assertThatThrownBy(() -> paymentService.createPaymentIntent(request))
+                .isInstanceOf(ResourceAlreadyExistsException.class);
+
+        verify(stripePaymentService, never()).createPaymentIntent(any(), any(), any());
+    }
+
+    @Test
+    void createPaymentIntent_defaultsCurrencyToUSD() {
+        PaymentIntentRequest request = PaymentIntentRequest.builder()
+                .orderId(1L).paymentMethod(PaymentMethod.CREDIT_CARD).build();
+
+        PaymentIntent mockIntent = mock(PaymentIntent.class);
+        when(mockIntent.getId()).thenReturn("pi_test_abc");
+        when(mockIntent.getClientSecret()).thenReturn("secret");
+        when(mockIntent.getStatus()).thenReturn("requires_payment_method");
+        when(mockIntent.getAmount()).thenReturn(99999L);
+        when(mockIntent.getCurrency()).thenReturn("usd");
+
+        when(paymentRepository.existsByOrderId(1L)).thenReturn(false);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+        when(stripePaymentService.createPaymentIntent(any(), eq("USD"), eq(1L))).thenReturn(mockIntent);
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
+            Payment saved = inv.getArgument(0);
+            assertThat(saved.getCurrency()).isEqualTo("USD");
+            return payment;
+        });
+
+        paymentService.createPaymentIntent(request);
+    }
+
+    @Test
+    void cancelStripePayment_success() {
+        payment.setStripePaymentIntentId("pi_test_123");
+        when(paymentRepository.findByStripePaymentIntentId("pi_test_123")).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenReturn(payment);
+
+        PaymentIntent cancelledIntent = mock(PaymentIntent.class);
+        when(stripePaymentService.cancelPaymentIntent("pi_test_123")).thenReturn(cancelledIntent);
+
+        PaymentDTO result = paymentService.cancelStripePayment("pi_test_123");
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CANCELLED);
+        verify(stripePaymentService).cancelPaymentIntent("pi_test_123");
+    }
+
+    @Test
+    void cancelStripePayment_notFound_throwsException() {
+        when(paymentRepository.findByStripePaymentIntentId("pi_missing")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> paymentService.cancelStripePayment("pi_missing"))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void handleWebhookEvent_paymentIntentSucceeded_updatesPaymentAndOrder() {
+        payment.setStripePaymentIntentId("pi_test_123");
+
+        PaymentIntent mockIntent = mock(PaymentIntent.class);
+        when(mockIntent.getId()).thenReturn("pi_test_123");
+        when(mockIntent.getLatestCharge()).thenReturn("ch_test_456");
+
+        EventDataObjectDeserializer deserializer = mock(EventDataObjectDeserializer.class);
+        when(deserializer.getObject()).thenReturn(Optional.of(mockIntent));
+
+        Event mockEvent = mock(Event.class);
+        when(mockEvent.getType()).thenReturn("payment_intent.succeeded");
+        when(mockEvent.getDataObjectDeserializer()).thenReturn(deserializer);
+
+        when(stripePaymentService.constructWebhookEvent("payload", "sig")).thenReturn(mockEvent);
+        when(paymentRepository.findByStripePaymentIntentId("pi_test_123")).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenReturn(payment);
+        when(orderRepository.save(any(Order.class))).thenReturn(order);
+
+        paymentService.handleWebhookEvent("payload", "sig");
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.COMPLETED);
+        assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.CONFIRMED);
+    }
+
+    @Test
+    void handleWebhookEvent_paymentIntentFailed_updatesPaymentToFailed() {
+        payment.setStripePaymentIntentId("pi_test_123");
+
+        PaymentIntent mockIntent = mock(PaymentIntent.class);
+        when(mockIntent.getId()).thenReturn("pi_test_123");
+
+        EventDataObjectDeserializer deserializer = mock(EventDataObjectDeserializer.class);
+        when(deserializer.getObject()).thenReturn(Optional.of(mockIntent));
+
+        Event mockEvent = mock(Event.class);
+        when(mockEvent.getType()).thenReturn("payment_intent.payment_failed");
+        when(mockEvent.getDataObjectDeserializer()).thenReturn(deserializer);
+
+        when(stripePaymentService.constructWebhookEvent("payload", "sig")).thenReturn(mockEvent);
+        when(paymentRepository.findByStripePaymentIntentId("pi_test_123")).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenReturn(payment);
+
+        paymentService.handleWebhookEvent("payload", "sig");
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
+    }
+
+    @Test
+    void handleWebhookEvent_paymentIntentCanceled_updatesPaymentToCancelled() {
+        payment.setStripePaymentIntentId("pi_test_123");
+
+        PaymentIntent mockIntent = mock(PaymentIntent.class);
+        when(mockIntent.getId()).thenReturn("pi_test_123");
+
+        EventDataObjectDeserializer deserializer = mock(EventDataObjectDeserializer.class);
+        when(deserializer.getObject()).thenReturn(Optional.of(mockIntent));
+
+        Event mockEvent = mock(Event.class);
+        when(mockEvent.getType()).thenReturn("payment_intent.canceled");
+        when(mockEvent.getDataObjectDeserializer()).thenReturn(deserializer);
+
+        when(stripePaymentService.constructWebhookEvent("payload", "sig")).thenReturn(mockEvent);
+        when(paymentRepository.findByStripePaymentIntentId("pi_test_123")).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenReturn(payment);
+
+        paymentService.handleWebhookEvent("payload", "sig");
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CANCELLED);
     }
 }
