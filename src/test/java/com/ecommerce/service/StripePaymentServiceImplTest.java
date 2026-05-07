@@ -35,7 +35,7 @@ class StripePaymentServiceImplTest {
     @Test
     void createPaymentIntent_withInvalidApiKey_throwsStripePaymentException() {
         assertThatThrownBy(() ->
-                stripePaymentService.createPaymentIntent(new BigDecimal("99.99"), "AUD", 1L))
+                stripePaymentService.createPaymentIntent(new BigDecimal("99.99"), "AUD", 1L, "test@example.com", "Test User"))
                 .isInstanceOf(StripePaymentException.class)
                 .hasMessageContaining("Failed to create payment intent");
     }
