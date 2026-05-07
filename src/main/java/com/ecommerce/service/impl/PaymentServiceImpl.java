@@ -68,8 +68,11 @@ public class PaymentServiceImpl implements PaymentService {
 
         String currency = request.getCurrency() != null ? request.getCurrency() : "AUD";
 
+        String email = order.getUser().getEmail();
+        String name = order.getUser().getFirstName() + " " + order.getUser().getLastName();
+
         PaymentIntent stripeIntent = stripePaymentService.createPaymentIntent(
-                order.getTotalAmount(), currency, order.getId());
+                order.getTotalAmount(), currency, order.getId(), email, name);
 
         Payment payment = Payment.builder()
                 .order(order)
