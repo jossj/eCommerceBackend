@@ -66,14 +66,14 @@ class PaymentServiceImplTest {
                 .paymentMethod(PaymentMethod.CREDIT_CARD)
                 .amount(new BigDecimal("999.99"))
                 .transactionId("txn-abc-123")
-                .currency("USD")
+                .currency("AUD")
                 .status(PaymentStatus.COMPLETED)
                 .build();
 
         paymentDTO = PaymentDTO.builder()
                 .orderId(1L)
                 .paymentMethod(PaymentMethod.CREDIT_CARD)
-                .currency("USD")
+                .currency("AUD")
                 .build();
     }
 
@@ -108,14 +108,14 @@ class PaymentServiceImplTest {
     }
 
     @Test
-    void processPayment_defaultsCurrencyToUSD_whenNull() {
+    void processPayment_defaultsCurrencyToAud_whenNull() {
         paymentDTO.setCurrency(null);
         when(paymentRepository.existsByOrderId(1L)).thenReturn(false);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         when(orderRepository.save(any(Order.class))).thenReturn(order);
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
             Payment saved = inv.getArgument(0);
-            assertThat(saved.getCurrency()).isEqualTo("USD");
+            assertThat(saved.getCurrency()).isEqualTo("AUD");
             return payment;
         });
 
@@ -202,7 +202,7 @@ class PaymentServiceImplTest {
         List<PaymentDTO> result = paymentService.getAllPayments();
 
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getCurrency()).isEqualTo("USD");
+        assertThat(result.get(0).getCurrency()).isEqualTo("AUD");
     }
 
     @Test
@@ -279,7 +279,7 @@ class PaymentServiceImplTest {
     @Test
     void createPaymentIntent_success() {
         PaymentIntentRequest request = PaymentIntentRequest.builder()
-                .orderId(1L).paymentMethod(PaymentMethod.CREDIT_CARD).currency("USD").build();
+                .orderId(1L).paymentMethod(PaymentMethod.CREDIT_CARD).currency("AUD").build();
 
         PaymentIntent mockIntent = mock(PaymentIntent.class);
         when(mockIntent.getId()).thenReturn("pi_test_abc");
@@ -290,7 +290,7 @@ class PaymentServiceImplTest {
 
         when(paymentRepository.existsByOrderId(1L)).thenReturn(false);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
-        when(stripePaymentService.createPaymentIntent(order.getTotalAmount(), "USD", 1L))
+        when(stripePaymentService.createPaymentIntent(order.getTotalAmount(), "AUD", 1L))
                 .thenReturn(mockIntent);
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
             Payment saved = inv.getArgument(0);
@@ -298,7 +298,7 @@ class PaymentServiceImplTest {
                     .id(1L).order(order)
                     .paymentMethod(PaymentMethod.CREDIT_CARD)
                     .amount(order.getTotalAmount())
-                    .currency("USD")
+                    .currency("AUD")
                     .stripePaymentIntentId("pi_test_abc")
                     .status(PaymentStatus.PENDING)
                     .build();
@@ -325,7 +325,7 @@ class PaymentServiceImplTest {
     }
 
     @Test
-    void createPaymentIntent_defaultsCurrencyToUSD() {
+    void createPaymentIntent_defaultsCurrencyToAud() {
         PaymentIntentRequest request = PaymentIntentRequest.builder()
                 .orderId(1L).paymentMethod(PaymentMethod.CREDIT_CARD).build();
 
@@ -338,10 +338,10 @@ class PaymentServiceImplTest {
 
         when(paymentRepository.existsByOrderId(1L)).thenReturn(false);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
-        when(stripePaymentService.createPaymentIntent(any(), eq("USD"), eq(1L))).thenReturn(mockIntent);
+        when(stripePaymentService.createPaymentIntent(any(), eq("AUD"), eq(1L))).thenReturn(mockIntent);
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
             Payment saved = inv.getArgument(0);
-            assertThat(saved.getCurrency()).isEqualTo("USD");
+            assertThat(saved.getCurrency()).isEqualTo("AUD");
             return payment;
         });
 

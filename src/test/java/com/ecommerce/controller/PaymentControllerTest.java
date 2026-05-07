@@ -46,7 +46,7 @@ class PaymentControllerTest {
                 .paymentMethod(PaymentMethod.CREDIT_CARD)
                 .amount(new BigDecimal("999.99"))
                 .transactionId("txn-abc-123")
-                .currency("USD")
+                .currency("AUD")
                 .status(PaymentStatus.COMPLETED)
                 .build();
     }
@@ -54,7 +54,7 @@ class PaymentControllerTest {
     @Test
     void processPayment_validInput_returns201() throws Exception {
         PaymentDTO request = PaymentDTO.builder()
-                .orderId(1L).paymentMethod(PaymentMethod.CREDIT_CARD).currency("USD").build();
+                .orderId(1L).paymentMethod(PaymentMethod.CREDIT_CARD).currency("AUD").build();
         when(paymentService.processPayment(any(PaymentDTO.class))).thenReturn(paymentDTO);
 
         mockMvc.perform(post("/api/payments")
@@ -119,7 +119,7 @@ class PaymentControllerTest {
         mockMvc.perform(get("/api/payments/1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1))
-                .andExpect(jsonPath("$.currency").value("USD"));
+                .andExpect(jsonPath("$.currency").value("AUD"));
     }
 
     @Test
@@ -172,7 +172,7 @@ class PaymentControllerTest {
     void updateStatus_returns200() throws Exception {
         PaymentDTO updated = PaymentDTO.builder().id(1L).orderId(1L)
                 .paymentMethod(PaymentMethod.CREDIT_CARD).status(PaymentStatus.FAILED)
-                .amount(new BigDecimal("999.99")).currency("USD").build();
+                .amount(new BigDecimal("999.99")).currency("AUD").build();
         when(paymentService.updatePaymentStatus(1L, PaymentStatus.FAILED)).thenReturn(updated);
 
         mockMvc.perform(patch("/api/payments/1/status").param("status", "FAILED"))
@@ -184,7 +184,7 @@ class PaymentControllerTest {
     void refundPayment_returns200() throws Exception {
         PaymentDTO refunded = PaymentDTO.builder().id(1L).orderId(1L)
                 .paymentMethod(PaymentMethod.CREDIT_CARD).status(PaymentStatus.REFUNDED)
-                .amount(new BigDecimal("999.99")).currency("USD").build();
+                .amount(new BigDecimal("999.99")).currency("AUD").build();
         when(paymentService.refundPayment(1L)).thenReturn(refunded);
 
         mockMvc.perform(patch("/api/payments/1/refund"))
@@ -204,7 +204,7 @@ class PaymentControllerTest {
     @Test
     void createPaymentIntent_validInput_returns201() throws Exception {
         PaymentIntentRequest request = PaymentIntentRequest.builder()
-                .orderId(1L).paymentMethod(PaymentMethod.CREDIT_CARD).currency("USD").build();
+                .orderId(1L).paymentMethod(PaymentMethod.CREDIT_CARD).currency("AUD").build();
         PaymentIntentResponse response = PaymentIntentResponse.builder()
                 .paymentId(1L).orderId(1L)
                 .paymentIntentId("pi_test_abc")
@@ -253,7 +253,7 @@ class PaymentControllerTest {
     void confirmPaymentIntent_success_returns200() throws Exception {
         PaymentDTO confirmed = PaymentDTO.builder()
                 .id(1L).orderId(1L).paymentMethod(PaymentMethod.CREDIT_CARD)
-                .status(PaymentStatus.COMPLETED).currency("USD").build();
+                .status(PaymentStatus.COMPLETED).currency("AUD").build();
         when(paymentService.confirmStripePayment(anyString(), anyString())).thenReturn(confirmed);
 
         mockMvc.perform(post("/api/payments/intents/pi_test_abc/confirm")
@@ -267,7 +267,7 @@ class PaymentControllerTest {
     void cancelPaymentIntent_success_returns200() throws Exception {
         PaymentDTO cancelled = PaymentDTO.builder()
                 .id(1L).orderId(1L).paymentMethod(PaymentMethod.CREDIT_CARD)
-                .status(PaymentStatus.CANCELLED).currency("USD").build();
+                .status(PaymentStatus.CANCELLED).currency("AUD").build();
         when(paymentService.cancelStripePayment("pi_test_abc")).thenReturn(cancelled);
 
         mockMvc.perform(post("/api/payments/intents/pi_test_abc/cancel"))

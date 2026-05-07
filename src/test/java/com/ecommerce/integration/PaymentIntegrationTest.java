@@ -81,7 +81,7 @@ class PaymentIntegrationTest {
         PaymentDTO request = PaymentDTO.builder()
                 .orderId(orderId)
                 .paymentMethod(PaymentMethod.CREDIT_CARD)
-                .currency("USD")
+                .currency("AUD")
                 .build();
 
         mockMvc.perform(post("/api/payments")
@@ -92,7 +92,7 @@ class PaymentIntegrationTest {
                 .andExpect(jsonPath("$.orderId").value(orderId))
                 .andExpect(jsonPath("$.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.paymentMethod").value("CREDIT_CARD"))
-                .andExpect(jsonPath("$.currency").value("USD"))
+                .andExpect(jsonPath("$.currency").value("AUD"))
                 .andExpect(jsonPath("$.transactionId").isNotEmpty())
                 .andExpect(jsonPath("$.amount").value(500.00));
 
@@ -102,7 +102,7 @@ class PaymentIntegrationTest {
     }
 
     @Test
-    void processPayment_defaultsCurrencyToUSD() throws Exception {
+    void processPayment_defaultsCurrencyToAud() throws Exception {
         PaymentDTO request = PaymentDTO.builder()
                 .orderId(orderId)
                 .paymentMethod(PaymentMethod.PAYPAL)
@@ -112,7 +112,7 @@ class PaymentIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.currency").value("USD"));
+                .andExpect(jsonPath("$.currency").value("AUD"));
     }
 
     @Test
