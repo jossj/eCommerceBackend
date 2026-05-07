@@ -8,7 +8,7 @@ import java.math.BigDecimal;
 
 public interface StripePaymentService {
 
-    PaymentIntent createPaymentIntent(BigDecimal amount, String currency, Long orderId);
+    PaymentIntent createPaymentIntent(BigDecimal amount, String currency, Long orderId, String email, String name);
 
     PaymentIntent retrievePaymentIntent(String paymentIntentId);
 
