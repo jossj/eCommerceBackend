@@ -1,6 +1,8 @@
 package com.ecommerce.controller;
 
 import com.ecommerce.dto.PaymentDTO;
+import com.ecommerce.dto.PaymentIntentRequest;
+import com.ecommerce.dto.PaymentIntentResponse;
 import com.ecommerce.entity.Payment.PaymentStatus;
 import com.ecommerce.service.PaymentService;
 import jakarta.validation.Valid;
@@ -10,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/payments")
@@ -21,6 +24,25 @@ public class PaymentController {
     @PostMapping
     public ResponseEntity<PaymentDTO> processPayment(@Valid @RequestBody PaymentDTO paymentDTO) {
         return ResponseEntity.status(HttpStatus.CREATED).body(paymentService.processPayment(paymentDTO));
+    }
+
+    @PostMapping("/intents")
+    public ResponseEntity<PaymentIntentResponse> createPaymentIntent(
+            @Valid @RequestBody PaymentIntentRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(paymentService.createPaymentIntent(request));
+    }
+
+    @PostMapping("/intents/{intentId}/confirm")
+    public ResponseEntity<PaymentDTO> confirmPaymentIntent(
+            @PathVariable String intentId,
+            @RequestBody Map<String, String> body) {
+        String paymentMethodId = body.get("paymentMethodId");
+        return ResponseEntity.ok(paymentService.confirmStripePayment(intentId, paymentMethodId));
+    }
+
+    @PostMapping("/intents/{intentId}/cancel")
+    public ResponseEntity<PaymentDTO> cancelPaymentIntent(@PathVariable String intentId) {
+        return ResponseEntity.ok(paymentService.cancelStripePayment(intentId));
     }
 
     @GetMapping("/{id}")

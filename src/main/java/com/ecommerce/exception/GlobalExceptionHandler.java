@@ -52,6 +52,17 @@ public class GlobalExceptionHandler {
                 .build());
     }
 
+    @ExceptionHandler(StripePaymentException.class)
+    public ResponseEntity<ErrorResponse> handleStripePayment(StripePaymentException ex, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(ErrorResponse.builder()
+                .status(HttpStatus.PAYMENT_REQUIRED.value())
+                .error("Payment Error")
+                .message(ex.getMessage())
+                .path(request.getRequestURI())
+                .timestamp(LocalDateTime.now())
+                .build());
+    }
+
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ErrorResponse> handleIllegalState(IllegalStateException ex, HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.builder()

@@ -45,6 +45,9 @@ public class Payment {
 
     private String transactionId;
 
+    @Column(name = "stripe_payment_intent_id")
+    private String stripePaymentIntentId;
+
     private String currency;
 
     @Column(nullable = false, updatable = false)
