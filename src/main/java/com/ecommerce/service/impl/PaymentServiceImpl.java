@@ -46,7 +46,7 @@ public class PaymentServiceImpl implements PaymentService {
                 .order(order)
                 .paymentMethod(dto.getPaymentMethod())
                 .amount(order.getTotalAmount())
-                .currency(dto.getCurrency() != null ? dto.getCurrency() : "USD")
+                .currency(dto.getCurrency() != null ? dto.getCurrency() : "AUD")
                 .transactionId(UUID.randomUUID().toString())
                 .status(PaymentStatus.COMPLETED)
                 .build();
@@ -66,7 +66,7 @@ public class PaymentServiceImpl implements PaymentService {
         Order order = orderRepository.findById(request.getOrderId())
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + request.getOrderId()));
 
-        String currency = request.getCurrency() != null ? request.getCurrency() : "USD";
+        String currency = request.getCurrency() != null ? request.getCurrency() : "AUD";
 
         PaymentIntent stripeIntent = stripePaymentService.createPaymentIntent(
                 order.getTotalAmount(), currency, order.getId());
