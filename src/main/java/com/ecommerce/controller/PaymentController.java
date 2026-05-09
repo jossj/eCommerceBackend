@@ -35,8 +35,8 @@ public class PaymentController {
     @PostMapping("/intents/{intentId}/confirm")
     public ResponseEntity<PaymentDTO> confirmPaymentIntent(
             @PathVariable String intentId,
-            @RequestBody Map<String, String> body) {
-        String paymentMethodId = body.get("paymentMethodId");
+            @RequestBody(required = false) Map<String, String> body) {
+        String paymentMethodId = body != null ? body.get("paymentMethodId") : null;
         return ResponseEntity.ok(paymentService.confirmStripePayment(intentId, paymentMethodId));
     }
 
