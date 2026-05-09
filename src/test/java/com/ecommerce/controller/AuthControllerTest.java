@@ -2,9 +2,13 @@ package com.ecommerce.controller;
 
 import com.ecommerce.config.TestSecurityConfig;
 import com.ecommerce.dto.LoginRequest;
+import com.ecommerce.dto.RegisterRequest;
+import com.ecommerce.dto.UserDTO;
 import com.ecommerce.entity.User;
+import com.ecommerce.exception.ResourceAlreadyExistsException;
 import com.ecommerce.security.AuthenticatedUser;
 import com.ecommerce.security.JwtUtil;
+import com.ecommerce.service.UserService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,6 +35,7 @@ class AuthControllerTest {
 
     @MockitoBean private AuthenticationManager authenticationManager;
     @MockitoBean private JwtUtil jwtUtil;
+    @MockitoBean private UserService userService;
 
     @Test
     void login_validCredentials_returnsTokenAndUserInfo() throws Exception {
@@ -102,6 +107,86 @@ class AuthControllerTest {
                 .email("user@example.com").build();
 
         mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.validationErrors").isArray());
+    }
+
+    // ── register ────────────────────────────────────────────────────────────
+
+    @Test
+    void register_validRequest_returns201WithToken() throws Exception {
+        UserDTO created = UserDTO.builder()
+                .id(5L).email("jane@example.com")
+                .firstName("Jane").lastName("Doe")
+                .role(User.Role.CUSTOMER).build();
+
+        when(userService.createUser(any())).thenReturn(created);
+        when(jwtUtil.generateToken("jane@example.com", 5L, "CUSTOMER")).thenReturn("new-jwt-token");
+
+        RegisterRequest request = RegisterRequest.builder()
+                .firstName("Jane").lastName("Doe")
+                .email("jane@example.com").password("secret123").build();
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.token").value("new-jwt-token"))
+                .andExpect(jsonPath("$.type").value("Bearer"))
+                .andExpect(jsonPath("$.userId").value(5))
+                .andExpect(jsonPath("$.email").value("jane@example.com"))
+                .andExpect(jsonPath("$.role").value("CUSTOMER"));
+    }
+
+    @Test
+    void register_duplicateEmail_returns409() throws Exception {
+        when(userService.createUser(any()))
+                .thenThrow(new ResourceAlreadyExistsException("User already exists with email: jane@example.com"));
+
+        RegisterRequest request = RegisterRequest.builder()
+                .firstName("Jane").lastName("Doe")
+                .email("jane@example.com").password("secret123").build();
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("User already exists with email: jane@example.com"));
+    }
+
+    @Test
+    void register_missingFirstName_returns400() throws Exception {
+        RegisterRequest request = RegisterRequest.builder()
+                .lastName("Doe").email("jane@example.com").password("secret123").build();
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.validationErrors").isArray());
+    }
+
+    @Test
+    void register_missingPassword_returns400() throws Exception {
+        RegisterRequest request = RegisterRequest.builder()
+                .firstName("Jane").lastName("Doe").email("jane@example.com").build();
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.validationErrors").isArray());
+    }
+
+    @Test
+    void register_invalidEmailFormat_returns400() throws Exception {
+        RegisterRequest request = RegisterRequest.builder()
+                .firstName("Jane").lastName("Doe")
+                .email("not-an-email").password("secret123").build();
+
+        mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())

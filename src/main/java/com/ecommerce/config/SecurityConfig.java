@@ -81,7 +81,8 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 // ── Public ───────────────────────────────────────────────────
                 .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/users").permitAll()          // registration
+                .requestMatchers(HttpMethod.POST, "/api/auth/register").permitAll()  // registration
+                .requestMatchers(HttpMethod.POST, "/api/users").permitAll()          // registration (legacy)
                 .requestMatchers(HttpMethod.GET,  "/api/products", "/api/products/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/payments/webhook").permitAll()
                 .requestMatchers("/", "/*.html", "/css/**", "/js/**", "/images/**").permitAll()
