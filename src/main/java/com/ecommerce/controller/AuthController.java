@@ -2,10 +2,14 @@ package com.ecommerce.controller;
 
 import com.ecommerce.dto.AuthResponse;
 import com.ecommerce.dto.LoginRequest;
+import com.ecommerce.dto.RegisterRequest;
+import com.ecommerce.dto.UserDTO;
 import com.ecommerce.security.AuthenticatedUser;
 import com.ecommerce.security.JwtUtil;
+import com.ecommerce.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -22,6 +26,7 @@ public class AuthController {
 
     private final AuthenticationManager authenticationManager;
     private final JwtUtil jwtUtil;
+    private final UserService userService;
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
@@ -38,6 +43,31 @@ public class AuthController {
                 .userId(principal.getUserId())
                 .email(principal.getEmail())
                 .role(principal.getRole().name())
+                .build());
+    }
+
+    @PostMapping("/register")
+    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
+        UserDTO userDTO = UserDTO.builder()
+                .firstName(request.getFirstName())
+                .lastName(request.getLastName())
+                .email(request.getEmail())
+                .password(request.getPassword())
+                .phone(request.getPhone())
+                .address(request.getAddress())
+                .build();
+
+        UserDTO created = userService.createUser(userDTO);
+
+        String token = jwtUtil.generateToken(
+                created.getEmail(), created.getId(), created.getRole().name());
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(AuthResponse.builder()
+                .token(token)
+                .type("Bearer")
+                .userId(created.getId())
+                .email(created.getEmail())
+                .role(created.getRole().name())
                 .build());
     }
 }
