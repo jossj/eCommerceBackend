@@ -14,9 +14,11 @@ import com.ecommerce.repository.OrderRepository;
 import com.ecommerce.repository.PaymentRepository;
 import com.ecommerce.service.StripePaymentService;
 import com.ecommerce.service.impl.PaymentServiceImpl;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stripe.model.Event;
 import com.stripe.model.EventDataObjectDeserializer;
 import com.stripe.model.PaymentIntent;
+import com.stripe.model.StripeObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -40,6 +42,7 @@ class PaymentServiceImplTest {
     @Mock private PaymentRepository paymentRepository;
     @Mock private OrderRepository orderRepository;
     @Mock private StripePaymentService stripePaymentService;
+    @Mock private ObjectMapper objectMapper;
 
     @InjectMocks
     private PaymentServiceImpl paymentService;
@@ -371,25 +374,160 @@ class PaymentServiceImplTest {
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
+    // ── confirmStripePayment ──────────────────────────────────────────────────
+
+    @Test
+    void confirmStripePayment_alreadySucceeded_syncsOrderWithoutReconfirming() {
+        payment.setStripePaymentIntentId("pi_test_123");
+        when(paymentRepository.findByStripePaymentIntentId("pi_test_123")).thenReturn(Optional.of(payment));
+
+        PaymentIntent succeededIntent = mock(PaymentIntent.class);
+        when(succeededIntent.getStatus()).thenReturn("succeeded");
+        when(succeededIntent.getLatestCharge()).thenReturn("ch_test_456");
+        when(stripePaymentService.retrievePaymentIntent("pi_test_123")).thenReturn(succeededIntent);
+
+        when(orderRepository.save(any(Order.class))).thenReturn(order);
+        when(paymentRepository.save(any(Payment.class))).thenReturn(payment);
+
+        // No paymentMethodId — simulates client-side Stripe.js confirmation
+        paymentService.confirmStripePayment("pi_test_123", null);
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.COMPLETED);
+        assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.CONFIRMED);
+        verify(stripePaymentService, never()).confirmPaymentIntent(any(), any());
+    }
+
+    @Test
+    void confirmStripePayment_withPaymentMethodId_alreadySucceeded_syncsWithoutReconfirming() {
+        // Even when a paymentMethodId is supplied, if Stripe already shows "succeeded"
+        // the service must NOT call confirm() again (it would throw).
+        payment.setStripePaymentIntentId("pi_test_123");
+        when(paymentRepository.findByStripePaymentIntentId("pi_test_123")).thenReturn(Optional.of(payment));
+
+        PaymentIntent succeededIntent = mock(PaymentIntent.class);
+        when(succeededIntent.getStatus()).thenReturn("succeeded");
+        when(succeededIntent.getLatestCharge()).thenReturn("ch_test_456");
+        when(stripePaymentService.retrievePaymentIntent("pi_test_123")).thenReturn(succeededIntent);
+
+        when(orderRepository.save(any(Order.class))).thenReturn(order);
+        when(paymentRepository.save(any(Payment.class))).thenReturn(payment);
+
+        paymentService.confirmStripePayment("pi_test_123", "pm_card_visa");
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.COMPLETED);
+        assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.CONFIRMED);
+        verify(stripePaymentService, never()).confirmPaymentIntent(any(), any());
+    }
+
+    @Test
+    void confirmStripePayment_serverSideConfirmation_succeeds() {
+        payment.setStripePaymentIntentId("pi_test_123");
+        when(paymentRepository.findByStripePaymentIntentId("pi_test_123")).thenReturn(Optional.of(payment));
+
+        PaymentIntent pendingIntent = mock(PaymentIntent.class);
+        when(pendingIntent.getStatus()).thenReturn("requires_payment_method");
+        when(stripePaymentService.retrievePaymentIntent("pi_test_123")).thenReturn(pendingIntent);
+
+        PaymentIntent confirmedIntent = mock(PaymentIntent.class);
+        when(confirmedIntent.getStatus()).thenReturn("succeeded");
+        when(confirmedIntent.getLatestCharge()).thenReturn("ch_test_789");
+        when(stripePaymentService.confirmPaymentIntent("pi_test_123", "pm_card_visa")).thenReturn(confirmedIntent);
+
+        when(orderRepository.save(any(Order.class))).thenReturn(order);
+        when(paymentRepository.save(any(Payment.class))).thenReturn(payment);
+
+        paymentService.confirmStripePayment("pi_test_123", "pm_card_visa");
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.COMPLETED);
+        assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.CONFIRMED);
+        verify(stripePaymentService).confirmPaymentIntent("pi_test_123", "pm_card_visa");
+    }
+
+    @Test
+    void confirmStripePayment_requiresAction_leavesPaymentPending() {
+        payment.setStripePaymentIntentId("pi_test_123");
+        payment.setStatus(PaymentStatus.PENDING);
+        when(paymentRepository.findByStripePaymentIntentId("pi_test_123")).thenReturn(Optional.of(payment));
+
+        PaymentIntent actionIntent = mock(PaymentIntent.class);
+        when(actionIntent.getStatus()).thenReturn("requires_action");
+        when(stripePaymentService.retrievePaymentIntent("pi_test_123")).thenReturn(actionIntent);
+
+        when(paymentRepository.save(any(Payment.class))).thenReturn(payment);
+
+        paymentService.confirmStripePayment("pi_test_123", null);
+
+        // 3D Secure in progress — payment stays PENDING; webhook will finalise it
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PENDING);
+        assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.PENDING);
+        verify(orderRepository, never()).save(any());
+    }
+
+    @Test
+    void confirmStripePayment_notFound_throwsException() {
+        when(paymentRepository.findByStripePaymentIntentId("pi_missing")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> paymentService.confirmStripePayment("pi_missing", null))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── handleWebhookEvent ────────────────────────────────────────────────────
+
     @Test
     void handleWebhookEvent_paymentIntentSucceeded_updatesPaymentAndOrder() {
         payment.setStripePaymentIntentId("pi_test_123");
 
-        PaymentIntent mockIntent = mock(PaymentIntent.class);
-        when(mockIntent.getId()).thenReturn("pi_test_123");
-        when(mockIntent.getLatestCharge()).thenReturn("ch_test_456");
+        PaymentIntent eventIntent = mock(PaymentIntent.class);
+        when(eventIntent.getId()).thenReturn("pi_test_123");
 
         EventDataObjectDeserializer deserializer = mock(EventDataObjectDeserializer.class);
-        when(deserializer.getObject()).thenReturn(Optional.of(mockIntent));
+        when(deserializer.getObject()).thenReturn(Optional.of(eventIntent));
 
         Event mockEvent = mock(Event.class);
         when(mockEvent.getType()).thenReturn("payment_intent.succeeded");
         when(mockEvent.getDataObjectDeserializer()).thenReturn(deserializer);
 
+        PaymentIntent freshIntent = mock(PaymentIntent.class);
+        when(freshIntent.getLatestCharge()).thenReturn("ch_test_456");
+
         when(stripePaymentService.constructWebhookEvent("payload", "sig")).thenReturn(mockEvent);
+        when(stripePaymentService.retrievePaymentIntent("pi_test_123")).thenReturn(freshIntent);
         when(paymentRepository.findByStripePaymentIntentId("pi_test_123")).thenReturn(Optional.of(payment));
         when(paymentRepository.save(any(Payment.class))).thenReturn(payment);
         when(orderRepository.save(any(Order.class))).thenReturn(order);
+
+        paymentService.handleWebhookEvent("payload", "sig");
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.COMPLETED);
+        assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.CONFIRMED);
+        assertThat(payment.getTransactionId()).isEqualTo("ch_test_456");
+    }
+
+    @Test
+    void handleWebhookEvent_paymentIntentSucceeded_rawJsonFallback_updatesPaymentAndOrder() throws Exception {
+        // Simulates SDK/API-version mismatch where getObject() returns empty.
+        payment.setStripePaymentIntentId("pi_test_123");
+
+        EventDataObjectDeserializer deserializer = mock(EventDataObjectDeserializer.class);
+        when(deserializer.getObject()).thenReturn(Optional.empty());
+        when(deserializer.getRawJson()).thenReturn("{\"id\":\"pi_test_123\",\"object\":\"payment_intent\"}");
+
+        Event mockEvent = mock(Event.class);
+        when(mockEvent.getType()).thenReturn("payment_intent.succeeded");
+        when(mockEvent.getDataObjectDeserializer()).thenReturn(deserializer);
+
+        PaymentIntent freshIntent = mock(PaymentIntent.class);
+        when(freshIntent.getLatestCharge()).thenReturn("ch_test_456");
+
+        when(stripePaymentService.constructWebhookEvent("payload", "sig")).thenReturn(mockEvent);
+        when(stripePaymentService.retrievePaymentIntent("pi_test_123")).thenReturn(freshIntent);
+        when(paymentRepository.findByStripePaymentIntentId("pi_test_123")).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenReturn(payment);
+        when(orderRepository.save(any(Order.class))).thenReturn(order);
+
+        // Use a real ObjectMapper for this test so the raw JSON is actually parsed.
+        paymentService = new PaymentServiceImpl(
+                paymentRepository, orderRepository, stripePaymentService, new ObjectMapper());
 
         paymentService.handleWebhookEvent("payload", "sig");
 
