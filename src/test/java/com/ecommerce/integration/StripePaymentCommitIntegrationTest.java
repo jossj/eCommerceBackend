@@ -189,9 +189,12 @@ class StripePaymentCommitIntegrationTest {
                         .content(objectMapper.writeValueAsString(intentRequest)))
                 .andExpect(status().isCreated());
 
-        // Step 2: simulate Stripe webhook — mock constructWebhookEvent and retrievePaymentIntent
+        // Step 2: simulate Stripe webhook.
+        // The event carries the complete PaymentIntent (including latest_charge) so the
+        // handler uses it directly — no retrievePaymentIntent call on the happy path.
         PaymentIntent eventIntent = mock(PaymentIntent.class);
         when(eventIntent.getId()).thenReturn("pi_test_webhook_001");
+        when(eventIntent.getLatestCharge()).thenReturn("ch_test_webhook_001");
 
         EventDataObjectDeserializer deserializer = mock(EventDataObjectDeserializer.class);
         when(deserializer.getObject()).thenReturn(Optional.of(eventIntent));
@@ -202,11 +205,6 @@ class StripePaymentCommitIntegrationTest {
 
         when(stripePaymentService.constructWebhookEvent(anyString(), anyString()))
                 .thenReturn(mockEvent);
-
-        PaymentIntent freshIntent = mock(PaymentIntent.class);
-        when(freshIntent.getLatestCharge()).thenReturn("ch_test_webhook_001");
-        when(stripePaymentService.retrievePaymentIntent("pi_test_webhook_001"))
-                .thenReturn(freshIntent);
 
         // Step 3: deliver webhook
         String webhookPayload = "{\"type\":\"payment_intent.succeeded\",\"data\":{\"object\":{\"id\":\"pi_test_webhook_001\"}}}";

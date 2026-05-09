@@ -162,13 +162,16 @@ public class PaymentServiceImpl implements PaymentService {
 
         switch (event.getType()) {
             case "payment_intent.succeeded" -> {
-                String intentId = extractPaymentIntentId(event);
-                if (intentId == null) return;
-                // Re-fetch from Stripe so we always have the latest charge/status data.
-                PaymentIntent intent = stripePaymentService.retrievePaymentIntent(intentId);
-                paymentRepository.findByStripePaymentIntentId(intentId).ifPresent(payment -> {
+                // Use the PaymentIntent embedded in the event directly — no extra API call.
+                // Only fall back to retrievePaymentIntent when the SDK cannot deserialise
+                // the object (API/SDK version mismatch), because holding a DB transaction
+                // open across an external HTTP call risks timeouts and pool exhaustion.
+                PaymentIntent intent = resolvePaymentIntentFromEvent(event);
+                if (intent == null) return;
+                final PaymentIntent resolvedIntent = intent;
+                paymentRepository.findByStripePaymentIntentId(resolvedIntent.getId()).ifPresent(payment -> {
                     payment.setStatus(PaymentStatus.COMPLETED);
-                    payment.setTransactionId(intent.getLatestCharge());
+                    payment.setTransactionId(resolvedIntent.getLatestCharge());
                     paymentRepository.save(payment);
                     Order order = payment.getOrder();
                     order.setStatus(Order.OrderStatus.CONFIRMED);
@@ -194,17 +197,43 @@ public class PaymentServiceImpl implements PaymentService {
         }
     }
 
+    /**
+     * Returns the PaymentIntent from the webhook event object when the Stripe SDK can
+     * deserialise it (happy path — no extra API call needed).  Falls back to fetching
+     * from Stripe only when there is a SDK/API version mismatch and the object cannot
+     * be deserialised locally.  Returns {@code null} if the intent cannot be resolved.
+     */
+    private PaymentIntent resolvePaymentIntentFromEvent(Event event) {
+        EventDataObjectDeserializer deserializer = event.getDataObjectDeserializer();
+
+        // Fast path: SDK version matches — use the embedded PaymentIntent directly.
+        Optional<StripeObject> obj = deserializer.getObject();
+        if (obj.isPresent()) {
+            return (PaymentIntent) obj.get();
+        }
+
+        // Fallback: SDK/API version mismatch — extract the ID from raw JSON and
+        // retrieve the intent from Stripe to get accurate latest_charge data.
+        try {
+            JsonNode node = objectMapper.readTree(deserializer.getRawJson());
+            String id = node.path("id").asText(null);
+            if (id != null) {
+                return stripePaymentService.retrievePaymentIntent(id);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to resolve PaymentIntent from webhook event {}: {}", event.getId(), e.getMessage());
+        }
+        return null;
+    }
+
     private String extractPaymentIntentId(Event event) {
         EventDataObjectDeserializer deserializer = event.getDataObjectDeserializer();
 
-        // Fast path: SDK version matches the event's API version.
         Optional<StripeObject> obj = deserializer.getObject();
         if (obj.isPresent()) {
             return ((PaymentIntent) obj.get()).getId();
         }
 
-        // Fallback: parse the raw JSON to extract the ID.  This handles cases where the
-        // Stripe SDK version doesn't match the API version used to generate the event.
         try {
             JsonNode node = objectMapper.readTree(deserializer.getRawJson());
             return node.path("id").asText(null);
