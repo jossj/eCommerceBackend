@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 import static org.hamcrest.Matchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -50,12 +51,11 @@ class PaymentIntegrationTest {
         productRepository.deleteAll();
         userRepository.deleteAll();
 
-        UserDTO user = UserDTO.builder()
-                .firstName("Pay").lastName("User")
-                .email("payuser@test.com").password("password").build();
         String userResp = mockMvc.perform(post("/api/users")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(user)))
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "firstName", "Pay", "lastName", "User",
+                                "email", "payuser@test.com", "password", "password"))))
                 .andReturn().getResponse().getContentAsString();
         Long userId = objectMapper.readValue(userResp, UserDTO.class).getId();
 

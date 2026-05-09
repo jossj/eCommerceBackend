@@ -1,6 +1,7 @@
 package com.ecommerce.dto;
 
 import com.ecommerce.entity.User.Role;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
@@ -28,7 +29,7 @@ public class UserDTO {
     @NotBlank(message = "Email is required")
     private String email;
 
-    @NotBlank(message = "Password is required")
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
 
     private String phone;

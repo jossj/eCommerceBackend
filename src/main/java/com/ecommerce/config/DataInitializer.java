@@ -7,6 +7,7 @@ import com.ecommerce.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -19,6 +20,7 @@ public class DataInitializer implements CommandLineRunner {
 
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Override
     public void run(String... args) {
@@ -37,7 +39,7 @@ public class DataInitializer implements CommandLineRunner {
                 .firstName("Alice")
                 .lastName("Admin")
                 .email("alice@example.com")
-                .password("admin1234")
+                .password(passwordEncoder.encode("admin1234"))
                 .phone("555-0100")
                 .address("1 Admin Lane, Springfield")
                 .role(User.Role.ADMIN)
@@ -46,7 +48,7 @@ public class DataInitializer implements CommandLineRunner {
                 .firstName("Bob")
                 .lastName("Smith")
                 .email("bob@example.com")
-                .password("password123")
+                .password(passwordEncoder.encode("password123"))
                 .phone("555-0101")
                 .address("42 Elm Street, Shelbyville")
                 .build(),
@@ -54,7 +56,7 @@ public class DataInitializer implements CommandLineRunner {
                 .firstName("Carol")
                 .lastName("Jones")
                 .email("carol@example.com")
-                .password("password123")
+                .password(passwordEncoder.encode("password123"))
                 .phone("555-0102")
                 .address("7 Maple Ave, Capital City")
                 .build(),
@@ -62,7 +64,7 @@ public class DataInitializer implements CommandLineRunner {
                 .firstName("David")
                 .lastName("Lee")
                 .email("david@example.com")
-                .password("password123")
+                .password(passwordEncoder.encode("password123"))
                 .phone("555-0103")
                 .address("99 Oak Road, Ogdenville")
                 .build()
