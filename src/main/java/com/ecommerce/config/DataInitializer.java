@@ -30,7 +30,8 @@ public class DataInitializer implements CommandLineRunner {
 
     private void seedUsers() {
         if (userRepository.count() > 0) {
-            log.info("Users already seeded, skipping.");
+            log.info("Users already exist — checking for plaintext passwords to re-hash.");
+            rehashPlaintextPasswords();
             return;
         }
 
@@ -72,6 +73,21 @@ public class DataInitializer implements CommandLineRunner {
 
         userRepository.saveAll(users);
         log.info("Seeded {} users.", users.size());
+    }
+
+    /**
+     * Detects users whose stored password is plaintext (predates BCrypt) and re-hashes it.
+     * BCrypt hashes always start with $2a$, $2b$, or $2y$.
+     */
+    private void rehashPlaintextPasswords() {
+        userRepository.findAll().forEach(user -> {
+            String pwd = user.getPassword();
+            if (pwd != null && !pwd.startsWith("$2a$") && !pwd.startsWith("$2b$") && !pwd.startsWith("$2y$")) {
+                log.warn("Re-hashing plaintext password for user: {}", user.getEmail());
+                user.setPassword(passwordEncoder.encode(pwd));
+                userRepository.save(user);
+            }
+        });
     }
 
     private void seedProducts() {
