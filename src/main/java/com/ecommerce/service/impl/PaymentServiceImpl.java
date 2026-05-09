@@ -100,15 +100,22 @@ public class PaymentServiceImpl implements PaymentService {
     public PaymentDTO confirmStripePayment(String paymentIntentId, String paymentMethodId) {
         Payment payment = findByIntentOrThrow(paymentIntentId);
 
-        PaymentIntent confirmedIntent = stripePaymentService.confirmPaymentIntent(paymentIntentId, paymentMethodId);
+        // If a payment method is supplied the intent still needs server-side confirmation.
+        // Otherwise the client (e.g. Stripe.js) already confirmed it — just sync the status.
+        PaymentIntent intent = (paymentMethodId != null && !paymentMethodId.isBlank())
+                ? stripePaymentService.confirmPaymentIntent(paymentIntentId, paymentMethodId)
+                : stripePaymentService.retrievePaymentIntent(paymentIntentId);
 
-        if ("succeeded".equals(confirmedIntent.getStatus())) {
+        if ("succeeded".equals(intent.getStatus())) {
             payment.setStatus(PaymentStatus.COMPLETED);
-            payment.setTransactionId(confirmedIntent.getLatestCharge());
+            payment.setTransactionId(intent.getLatestCharge());
             Order order = payment.getOrder();
             order.setStatus(Order.OrderStatus.CONFIRMED);
             orderRepository.save(order);
-        } else {
+        } else if (!"requires_action".equals(intent.getStatus())
+                && !"requires_confirmation".equals(intent.getStatus())) {
+            // requires_action / requires_confirmation mean the payment is still in-flight
+            // (e.g. 3D Secure); leave it PENDING so the webhook can finalise it.
             payment.setStatus(PaymentStatus.FAILED);
         }
 
