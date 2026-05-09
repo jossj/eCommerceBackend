@@ -477,8 +477,10 @@ class PaymentServiceImplTest {
     void handleWebhookEvent_paymentIntentSucceeded_updatesPaymentAndOrder() {
         payment.setStripePaymentIntentId("pi_test_123");
 
+        // The event already carries the full PaymentIntent — no extra API call needed.
         PaymentIntent eventIntent = mock(PaymentIntent.class);
         when(eventIntent.getId()).thenReturn("pi_test_123");
+        when(eventIntent.getLatestCharge()).thenReturn("ch_test_456");
 
         EventDataObjectDeserializer deserializer = mock(EventDataObjectDeserializer.class);
         when(deserializer.getObject()).thenReturn(Optional.of(eventIntent));
@@ -487,11 +489,7 @@ class PaymentServiceImplTest {
         when(mockEvent.getType()).thenReturn("payment_intent.succeeded");
         when(mockEvent.getDataObjectDeserializer()).thenReturn(deserializer);
 
-        PaymentIntent freshIntent = mock(PaymentIntent.class);
-        when(freshIntent.getLatestCharge()).thenReturn("ch_test_456");
-
         when(stripePaymentService.constructWebhookEvent("payload", "sig")).thenReturn(mockEvent);
-        when(stripePaymentService.retrievePaymentIntent("pi_test_123")).thenReturn(freshIntent);
         when(paymentRepository.findByStripePaymentIntentId("pi_test_123")).thenReturn(Optional.of(payment));
         when(paymentRepository.save(any(Payment.class))).thenReturn(payment);
         when(orderRepository.save(any(Order.class))).thenReturn(order);
@@ -501,6 +499,8 @@ class PaymentServiceImplTest {
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.COMPLETED);
         assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.CONFIRMED);
         assertThat(payment.getTransactionId()).isEqualTo("ch_test_456");
+        // Verify no extra round-trip to Stripe was made
+        verify(stripePaymentService, never()).retrievePaymentIntent(any());
     }
 
     @Test
@@ -517,6 +517,7 @@ class PaymentServiceImplTest {
         when(mockEvent.getDataObjectDeserializer()).thenReturn(deserializer);
 
         PaymentIntent freshIntent = mock(PaymentIntent.class);
+        when(freshIntent.getId()).thenReturn("pi_test_123");
         when(freshIntent.getLatestCharge()).thenReturn("ch_test_456");
 
         when(stripePaymentService.constructWebhookEvent("payload", "sig")).thenReturn(mockEvent);
@@ -533,6 +534,42 @@ class PaymentServiceImplTest {
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.COMPLETED);
         assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.CONFIRMED);
+        assertThat(payment.getTransactionId()).isEqualTo("ch_test_456");
+    }
+
+    @Test
+    void handleWebhookEvent_paymentIntentSucceeded_retrievePaymentIntentCalledOnlyAsFallback() throws Exception {
+        // When deserializer fails (SDK/API version mismatch) the handler must fall back to
+        // retrievePaymentIntent to obtain the charge ID — but ONLY in that case.
+        payment.setStripePaymentIntentId("pi_test_123");
+
+        EventDataObjectDeserializer deserializer = mock(EventDataObjectDeserializer.class);
+        when(deserializer.getObject()).thenReturn(Optional.empty());
+        when(deserializer.getRawJson()).thenReturn("{\"id\":\"pi_test_123\",\"object\":\"payment_intent\"}");
+
+        Event mockEvent = mock(Event.class);
+        when(mockEvent.getType()).thenReturn("payment_intent.succeeded");
+        when(mockEvent.getDataObjectDeserializer()).thenReturn(deserializer);
+
+        PaymentIntent freshIntent = mock(PaymentIntent.class);
+        when(freshIntent.getId()).thenReturn("pi_test_123");
+        when(freshIntent.getLatestCharge()).thenReturn("ch_fallback_456");
+
+        when(stripePaymentService.constructWebhookEvent("payload", "sig")).thenReturn(mockEvent);
+        when(stripePaymentService.retrievePaymentIntent("pi_test_123")).thenReturn(freshIntent);
+        when(paymentRepository.findByStripePaymentIntentId("pi_test_123")).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenReturn(payment);
+        when(orderRepository.save(any(Order.class))).thenReturn(order);
+
+        paymentService = new PaymentServiceImpl(
+                paymentRepository, orderRepository, stripePaymentService, new ObjectMapper());
+
+        paymentService.handleWebhookEvent("payload", "sig");
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.COMPLETED);
+        assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.CONFIRMED);
+        assertThat(payment.getTransactionId()).isEqualTo("ch_fallback_456");
+        verify(stripePaymentService).retrievePaymentIntent("pi_test_123");
     }
 
     @Test
