@@ -1,5 +1,6 @@
 package com.ecommerce.integration;
 
+import com.ecommerce.config.TestSecurityConfig;
 import com.ecommerce.dto.UserDTO;
 import com.ecommerce.entity.User.Role;
 import com.ecommerce.repository.UserRepository;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.annotation.Rollback;
 import org.springframework.test.context.ActiveProfiles;
@@ -23,6 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@Import(TestSecurityConfig.class)
 @Transactional
 @Rollback
 class UserIntegrationTest {
