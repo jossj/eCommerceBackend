@@ -7,6 +7,7 @@ import com.ecommerce.exception.ResourceNotFoundException;
 import com.ecommerce.repository.UserRepository;
 import com.ecommerce.service.UserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,13 +20,20 @@ import java.util.stream.Collectors;
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Override
     public UserDTO createUser(UserDTO dto) {
+        if (dto.getPassword() == null || dto.getPassword().isBlank()) {
+            throw new IllegalStateException("Password is required");
+        }
         if (userRepository.existsByEmail(dto.getEmail())) {
             throw new ResourceAlreadyExistsException("User already exists with email: " + dto.getEmail());
         }
         User user = toEntity(dto);
+        user.setPassword(passwordEncoder.encode(dto.getPassword()));
+        // Role is always CUSTOMER on self-registration; admins are seeded or promoted separately.
+        user.setRole(User.Role.CUSTOMER);
         return toDTO(userRepository.save(user));
     }
 
@@ -56,7 +64,8 @@ public class UserServiceImpl implements UserService {
         user.setLastName(dto.getLastName());
         user.setPhone(dto.getPhone());
         user.setAddress(dto.getAddress());
-        if (dto.getRole() != null) user.setRole(dto.getRole());
+        // Role is intentionally excluded: changes require a dedicated admin endpoint.
+        // Password changes require a dedicated change-password endpoint.
         return toDTO(userRepository.save(user));
     }
 
@@ -76,10 +85,8 @@ public class UserServiceImpl implements UserService {
                 .firstName(dto.getFirstName())
                 .lastName(dto.getLastName())
                 .email(dto.getEmail())
-                .password(dto.getPassword())
                 .phone(dto.getPhone())
                 .address(dto.getAddress())
-                .role(dto.getRole() != null ? dto.getRole() : User.Role.CUSTOMER)
                 .build();
     }
 
@@ -89,6 +96,7 @@ public class UserServiceImpl implements UserService {
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
                 .email(user.getEmail())
+                // password intentionally omitted — WRITE_ONLY in UserDTO
                 .phone(user.getPhone())
                 .address(user.getAddress())
                 .role(user.getRole())

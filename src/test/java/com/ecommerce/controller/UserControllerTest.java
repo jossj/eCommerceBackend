@@ -17,6 +17,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.hamcrest.Matchers.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -53,7 +54,9 @@ class UserControllerTest {
 
         mockMvc.perform(post("/api/users")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(userDTO)))
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "firstName", "John", "lastName", "Doe",
+                                "email", "john@example.com", "password", "password"))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.email").value("john@example.com"))
                 .andExpect(jsonPath("$.firstName").value("John"))
@@ -62,24 +65,20 @@ class UserControllerTest {
 
     @Test
     void createUser_missingFirstName_returns400() throws Exception {
-        UserDTO invalid = UserDTO.builder()
-                .lastName("Doe").email("john@example.com").password("password").build();
-
         mockMvc.perform(post("/api/users")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(invalid)))
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "lastName", "Doe", "email", "john@example.com", "password", "password"))))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     void createUser_invalidEmail_returns400() throws Exception {
-        UserDTO invalid = UserDTO.builder()
-                .firstName("John").lastName("Doe")
-                .email("not-an-email").password("password").build();
-
         mockMvc.perform(post("/api/users")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(invalid)))
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "firstName", "John", "lastName", "Doe",
+                                "email", "not-an-email", "password", "password"))))
                 .andExpect(status().isBadRequest());
     }
 
@@ -90,7 +89,9 @@ class UserControllerTest {
 
         mockMvc.perform(post("/api/users")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(userDTO)))
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "firstName", "John", "lastName", "Doe",
+                                "email", "john@example.com", "password", "password"))))
                 .andExpect(status().isConflict());
     }
 

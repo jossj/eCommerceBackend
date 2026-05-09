@@ -3,6 +3,7 @@ package com.ecommerce.exception;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -13,6 +14,18 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ErrorResponse> handleBadCredentials(BadCredentialsException ex, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ErrorResponse.builder()
+                .status(HttpStatus.UNAUTHORIZED.value())
+                .error("Unauthorized")
+                // Generic message: never reveal whether it was the email or password that was wrong.
+                .message("Invalid email or password")
+                .path(request.getRequestURI())
+                .timestamp(LocalDateTime.now())
+                .build());
+    }
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex, HttpServletRequest request) {

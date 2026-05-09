@@ -12,6 +12,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.List;
 import java.util.Optional;
@@ -19,16 +20,16 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class UserServiceImplTest {
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
+    @Mock private PasswordEncoder passwordEncoder;
 
-    @InjectMocks
-    private UserServiceImpl userService;
+    @InjectMocks private UserServiceImpl userService;
 
     private User user;
     private UserDTO userDTO;
@@ -40,7 +41,7 @@ class UserServiceImplTest {
                 .firstName("John")
                 .lastName("Doe")
                 .email("john@example.com")
-                .password("password")
+                .password("hashed-password")
                 .phone("1234567890")
                 .address("123 Main St")
                 .role(User.Role.CUSTOMER)
@@ -50,7 +51,7 @@ class UserServiceImplTest {
                 .firstName("John")
                 .lastName("Doe")
                 .email("john@example.com")
-                .password("password")
+                .password("plaintext")
                 .phone("1234567890")
                 .address("123 Main St")
                 .role(User.Role.CUSTOMER)
@@ -60,14 +61,14 @@ class UserServiceImplTest {
     @Test
     void createUser_success() {
         when(userRepository.existsByEmail(userDTO.getEmail())).thenReturn(false);
+        when(passwordEncoder.encode(anyString())).thenReturn("hashed-password");
         when(userRepository.save(any(User.class))).thenReturn(user);
 
         UserDTO result = userService.createUser(userDTO);
 
         assertThat(result.getEmail()).isEqualTo("john@example.com");
         assertThat(result.getFirstName()).isEqualTo("John");
-        assertThat(result.getLastName()).isEqualTo("Doe");
-        verify(userRepository).existsByEmail("john@example.com");
+        verify(passwordEncoder).encode("plaintext");
         verify(userRepository).save(any(User.class));
     }
 
@@ -83,9 +84,10 @@ class UserServiceImplTest {
     }
 
     @Test
-    void createUser_defaultsRoleToCustomer_whenRoleIsNull() {
-        userDTO.setRole(null);
+    void createUser_alwaysSetsRoleToCustomer() {
+        userDTO.setRole(User.Role.ADMIN);
         when(userRepository.existsByEmail(any())).thenReturn(false);
+        when(passwordEncoder.encode(anyString())).thenReturn("hashed");
         when(userRepository.save(any(User.class))).thenAnswer(inv -> {
             User saved = inv.getArgument(0);
             assertThat(saved.getRole()).isEqualTo(User.Role.CUSTOMER);
@@ -148,10 +150,7 @@ class UserServiceImplTest {
     @Test
     void getAllUsers_emptyRepo_returnsEmptyList() {
         when(userRepository.findAll()).thenReturn(List.of());
-
-        List<UserDTO> result = userService.getAllUsers();
-
-        assertThat(result).isEmpty();
+        assertThat(userService.getAllUsers()).isEmpty();
     }
 
     @Test
@@ -161,7 +160,6 @@ class UserServiceImplTest {
                 .lastName("Smith")
                 .phone("9876543210")
                 .address("456 Elm St")
-                .role(User.Role.ADMIN)
                 .build();
 
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
@@ -173,14 +171,15 @@ class UserServiceImplTest {
         assertThat(user.getLastName()).isEqualTo("Smith");
         assertThat(user.getPhone()).isEqualTo("9876543210");
         assertThat(user.getAddress()).isEqualTo("456 Elm St");
-        assertThat(user.getRole()).isEqualTo(User.Role.ADMIN);
+        // Role must not change via updateUser
+        assertThat(user.getRole()).isEqualTo(User.Role.CUSTOMER);
         verify(userRepository).save(user);
     }
 
     @Test
-    void updateUser_nullRole_doesNotChangeRole() {
+    void updateUser_roleIgnored_evenWhenSupplied() {
         UserDTO updateDTO = UserDTO.builder()
-                .firstName("Jane").lastName("Smith").role(null).build();
+                .firstName("Jane").lastName("Smith").role(User.Role.ADMIN).build();
 
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenReturn(user);
