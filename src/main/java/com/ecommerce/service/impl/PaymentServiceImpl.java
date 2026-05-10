@@ -124,6 +124,7 @@ public class PaymentServiceImpl implements PaymentService {
             payment.setTransactionId(intent.getLatestCharge());
             Order order = payment.getOrder();
             order.setStatus(Order.OrderStatus.CONFIRMED);
+            order.setTrackingNumber(intent.getId());
             orderRepository.save(order);
         } else if (!isInFlight(intent.getStatus())) {
             // Not succeeded and not in a known in-flight state — treat as a failure.
@@ -175,6 +176,7 @@ public class PaymentServiceImpl implements PaymentService {
                     paymentRepository.save(payment);
                     Order order = payment.getOrder();
                     order.setStatus(Order.OrderStatus.CONFIRMED);
+                    order.setTrackingNumber(resolvedIntent.getId());
                     orderRepository.save(order);
                 });
             }
