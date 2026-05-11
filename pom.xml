@@ -11,7 +11,7 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.ecommerce</groupId>
+    <groupId>au.com.j2econsulting</groupId>
     <artifactId>ecommerce-backend</artifactId>
     <version>1.0.0</version>
     <name>eCommerce Backend</name>
@@ -169,8 +169,8 @@
             <configuration>
                 <!-- Exclude Lombok-generated and config boilerplate from coverage -->
                 <excludes>
-                    <exclude>com/ecommerce/config/DataInitializer.class</exclude>
-                    <exclude>com/ecommerce/ECommerceApplication.class</exclude>
+                    <exclude>au/com/j2econsulting/config/DataInitializer.class</exclude>
+                    <exclude>au/com/j2econsulting/ECommerceApplication.class</exclude>
                 </excludes>
             </configuration>
         </plugin>
