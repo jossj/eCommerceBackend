@@ -1,0 +1,192 @@
+package au.com.j2econsulting.integration;
+
+import au.com.j2econsulting.config.TestSecurityConfig;
+import au.com.j2econsulting.dto.UserDTO;
+import au.com.j2econsulting.repository.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.test.annotation.Rollback;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+@Import(TestSecurityConfig.class)
+@Transactional
+@Rollback
+class UserIntegrationTest {
+
+    @Autowired private MockMvc mockMvc;
+    @Autowired private ObjectMapper objectMapper;
+    @Autowired private UserRepository userRepository;
+
+    @BeforeEach
+    void setUp() {
+        userRepository.deleteAll();
+    }
+
+    /** Builds a registration request body as a Map so the password field is always included. */
+    private String regJson(String firstName, String lastName, String email, String password) throws Exception {
+        return objectMapper.writeValueAsString(Map.of(
+                "firstName", firstName,
+                "lastName", lastName,
+                "email", email,
+                "password", password
+        ));
+    }
+
+    @Test
+    void createUser_persistsAndReturnsCreatedUser() throws Exception {
+        String response = mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(regJson("Alice", "Smith", "alice@test.com", "secret123")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").isNumber())
+                .andExpect(jsonPath("$.email").value("alice@test.com"))
+                .andExpect(jsonPath("$.firstName").value("Alice"))
+                .andExpect(jsonPath("$.role").value("CUSTOMER"))
+                .andReturn().getResponse().getContentAsString();
+
+        UserDTO created = objectMapper.readValue(response, UserDTO.class);
+        assertThat(userRepository.findById(created.getId())).isPresent();
+    }
+
+    @Test
+    void createUser_duplicateEmail_returns409() throws Exception {
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(regJson("Bob", "Jones", "bob@test.com", "password")))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(regJson("Bob", "Jones", "bob@test.com", "password")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(containsString("bob@test.com")));
+    }
+
+    @Test
+    void getUserById_returnsExistingUser() throws Exception {
+        String response = mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(regJson("Carol", "White", "carol@test.com", "pass")))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        Long userId = objectMapper.readValue(response, UserDTO.class).getId();
+
+        mockMvc.perform(get("/api/users/" + userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("carol@test.com"));
+    }
+
+    @Test
+    void getUserById_notFound_returns404() throws Exception {
+        mockMvc.perform(get("/api/users/999999"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404));
+    }
+
+    @Test
+    void getUserByEmail_returnsUser() throws Exception {
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(regJson("Dave", "Black", "dave@test.com", "pass")))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/users/email/dave@test.com"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.firstName").value("Dave"));
+    }
+
+    @Test
+    void getAllUsers_returnsAllCreatedUsers() throws Exception {
+        for (int i = 1; i <= 3; i++) {
+            mockMvc.perform(post("/api/users")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(regJson("User" + i, "Test", "user" + i + "@test.com", "pass")))
+                    .andExpect(status().isCreated());
+        }
+
+        mockMvc.perform(get("/api/users"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(3)));
+    }
+
+    @Test
+    void updateUser_changesFieldsAndReturnsUpdated() throws Exception {
+        String created = mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(regJson("Original", "Name", "original@test.com", "pass")))
+                .andReturn().getResponse().getContentAsString();
+        Long userId = objectMapper.readValue(created, UserDTO.class).getId();
+
+        UserDTO updateDTO = UserDTO.builder()
+                .firstName("Updated").lastName("Name")
+                .email("original@test.com").password("pass")
+                .phone("999-9999").address("New Address")
+                .build();
+
+        mockMvc.perform(put("/api/users/" + userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateDTO)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.firstName").value("Updated"))
+                .andExpect(jsonPath("$.phone").value("999-9999"))
+                .andExpect(jsonPath("$.role").value("CUSTOMER"));
+    }
+
+    @Test
+    void deleteUser_removesFromDatabase() throws Exception {
+        String created = mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(regJson("ToDelete", "User", "delete@test.com", "pass")))
+                .andReturn().getResponse().getContentAsString();
+        Long userId = objectMapper.readValue(created, UserDTO.class).getId();
+
+        mockMvc.perform(delete("/api/users/" + userId))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/users/" + userId))
+                .andExpect(status().isNotFound());
+
+        assertThat(userRepository.findById(userId)).isEmpty();
+    }
+
+    @Test
+    void createUser_invalidEmail_returns400WithValidationErrors() throws Exception {
+        String body = objectMapper.writeValueAsString(Map.of(
+                "firstName", "Test", "lastName", "User",
+                "email", "not-an-email", "password", "pass"));
+
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.validationErrors").isArray());
+    }
+
+    @Test
+    void createUser_defaultsRoleToCustomer_whenNotProvided() throws Exception {
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(regJson("NoRole", "User", "norole@test.com", "pass")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.role").value("CUSTOMER"));
+    }
+}
